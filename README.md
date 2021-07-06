@@ -58,7 +58,7 @@ git clone https://github.com/NtaylorOX/NLP_Mimic.git
 cd NLP_Mimic/
 ```
 ## Use pip package manager
-
+```
 pip install -r requirements.txt
-
+```
 
