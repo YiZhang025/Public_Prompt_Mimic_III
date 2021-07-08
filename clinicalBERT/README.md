@@ -34,6 +34,11 @@ File system expected:
   -2days
     -test.csv
 ```
+```
+mkdir data && mkdir data/discharge && mkdir data/3days && mkdir data/2days
+```
+
+
 Data file is expected to have column "TEXT", "ID" and "Label" (Note chunks, Admission ID, Label of readmission).
 
 
