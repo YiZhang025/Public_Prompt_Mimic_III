@@ -38,7 +38,16 @@ import pandas as pd
 from datetime import date
 
 
+#TODO
+# update whole repo to take in a data_dir of choice and load everything based on cmd arguments - no hard coded file locations
+# have embedding size updated dynamically based on loaded model or word2vec model
+# remove all redundant scripts
+
+
+##############
+
 parser = argparse.ArgumentParser()
+parser.add_argument('--data_dir', '-dd')
 parser.add_argument('--model_dir', '-md')
 parser.add_argument('--gpu', '-g')
 parser.add_argument('--modelarch', '-m')
@@ -50,13 +59,13 @@ parser.add_argument('--encarch', '-ea')
 cmdargs = parser.parse_args()
 
 
-usegpu = True
-
-if cmdargs.gpu is None:
-    usegpu = False
-else:
-    usegpu = True
-    args['device'] = 'cuda:' + str(cmdargs.gpu)
+# usegpu = True
+#
+# if cmdargs.gpu is None:
+#     usegpu = False
+# else:
+#     usegpu = True
+#     args['device'] = 'cuda:' + str(cmdargs.gpu)
 
 if cmdargs.modelarch is None:
     args['model_arch'] = 'lstmibgan'
@@ -82,10 +91,15 @@ if cmdargs.date is None:
     args['date'] = str(date.today())
 
 if cmdargs.model_dir is None:
-    # args['model_dir'] = "./artifacts/RCNN_IB_GAN_be_mimic3_org_embs2021-05-12.pt"
-    args['model_dir'] = "./artifacts/RCNN_IB_GAN_be_mimic3_org_embs_LM2021-05-27.pt"
+    args['model_dir'] = "./artifacts/RCNN_IB_GAN_be_mimic3_org_embs2021-05-12.pt"
+    # args['model_dir'] = "./artifacts/RCNN_IB_GAN_be_mimic3_org_embs_LM2021-05-27.pt"
 else:
-    args["model_dir"] = "./artifacts/" + str(cmdargs.model_dir)
+    args["model_dir"] = cmdargs.model_dir
+
+if cmdargs.data_dir is None:
+    args["data_dir"] = "F:/Oxford_CDT_HDS/NLP/"
+else:
+    args["data_dir"] = cmdargs.data_dir
 
 args['output_dir'] = args['model_dir'][:-3]
 
@@ -108,7 +122,7 @@ get_sentence_results = True
 sentence = "has experienced acute on chronic diastolic heart failure in the setting of volume overload due to his sepsis prescribed warfarin due to high sys blood pressure 160 "
 # sentence = "High diastolic blood pressure. Wheezy with low blood oxygen levels. Normal resipiratory rate"
 
-textData = TextDataMimic("mimic", "../clinicalBERT/data/", "discharge", trainLM=False,
+textData = TextDataMimic("mimic", args["data_dir"] +"/clinicalBERT/data/", "discharge", trainLM=False,
                          test_phase=False,
                          big_emb=args['big_emb'], new_emb = args["new_emb"])
 
@@ -156,7 +170,7 @@ def main():
     #TODO use below for loading un-trained models to then load state_dicts into
         print("loading model from state dicts")
 
-        checkpoint = torch.load(args['model_dir'])
+        checkpoint = torch.load(args['model_dir'], map_location=args['device'])
         G_model = LSTM_IB_GAN_Model(textData.word2index, textData.index2word, LM, textData.index2vector).to(args['device'])
         D_model = Discriminator().to(args['device'])
         G_optimizer = optim.Adam(G_model.parameters(), lr=0.0004, weight_decay=2e-6)

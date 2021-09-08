@@ -7,7 +7,7 @@ import random
 import operator
 
 
-model_dir = "../clinicalBERT/word2vec+fastText/word2vec+fastText"
+model_dir = "F:/Oxford_CDT_HDS/NLP/clinicalBERT/word2vec+fastText/word2vec+fastText"
 model = gensim.models.KeyedVectors.load(f'{model_dir}/word2vec.model')
 
 
