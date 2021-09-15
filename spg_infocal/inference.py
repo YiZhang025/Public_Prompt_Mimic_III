@@ -37,6 +37,9 @@ import argparse
 import pandas as pd
 from datetime import date
 
+'''
+example usage:  python .\inference.py --model_dir 'F:\Oxford_CDT_HDS\NLP\spg-infocal\artifacts\RCNN_IB_GAN_be_mimic3_org_embs2021-05-12.pt' --gpu
+'''
 
 #TODO
 # update whole repo to take in a data_dir of choice and load everything based on cmd arguments - no hard coded file locations
