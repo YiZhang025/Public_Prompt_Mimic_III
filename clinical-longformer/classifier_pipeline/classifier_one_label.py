@@ -13,15 +13,16 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader, RandomSampler
 from transformers import AutoModel,RobertaForMaskedLM
-from transformers.modeling_longformer import LongformerSelfAttention
+from transformers.models.longformer.modeling_longformer import LongformerSelfAttention
 
 import pytorch_lightning as pl
 from tokenizer import Tokenizer
 from torchnlp.encoders import LabelEncoder
 from torchnlp.utils import collate_tensors, lengths_to_mask
 from utils import mask_fill
-
+import pytorch_lightning
 import pytorch_lightning.metrics.functional.classification as metrics
+
 from loguru import logger
 
 import matplotlib.pyplot as plt
@@ -191,6 +192,7 @@ class Classifier(pl.LightningModule):
 
         self.hparams = hparams
         self.batch_size = hparams.batch_size
+        
 
         # Build Data module
         self.data = self.DataModule(self)
@@ -213,6 +215,7 @@ class Classifier(pl.LightningModule):
         """ Init transformer model + tokenizer + classification head."""
 
         if self.hparams.transformer_type == 'roberta-long':
+            print("loaded roberta long model!")
             self.transformer= RobertaLongForMaskedLM.from_pretrained(
                 self.hparams.encoder_model,
                 output_hidden_states=True,
@@ -449,18 +452,23 @@ class Classifier(pl.LightningModule):
         labels_hat = torch.argmax(y_hat, dim=1)
         y=targets['labels']
 
-
+        # didn't work wiith version of pytorch_lightning - 
         f1 = metrics.f1_score(labels_hat,y,    class_reduction='weighted')
         prec =metrics.precision(labels_hat,y,  class_reduction='weighted')
         recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
         acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
+
+        # f1 = pytorch_lightning.metrics.functional.f1(labels_hat,y)
+        # prec =metrics.Precision(labels_hat,y,  class_reduction='weighted')
+        # recall = metrics.Recall(labels_hat,y,  class_reduction='weighted')
+        # acc = metrics.Accuracy(labels_hat,y,   class_reduction='weighted')
 
         self.log('test_batch_prec',prec)
         self.log('test_batch_f1',f1)
         self.log('test_batch_recall',recall)
         self.log('test_batch_weighted_acc', acc)
 
-        cm = metrics.confusion_matrix(pred = labels_hat,target=y,normalize=False)
+        cm = metrics.ConfusionMatrix(pred = labels_hat,target=y,normalize=False)
         self.test_conf_matrices.append(cm)
 
 
@@ -493,10 +501,11 @@ class Classifier(pl.LightningModule):
 
         self.log('val_loss',loss_val)
 
-        f1 = metrics.f1_score(labels_hat, y,class_reduction='weighted')
-        prec =metrics.precision(labels_hat, y,class_reduction='weighted')
-        recall = metrics.recall(labels_hat, y,class_reduction='weighted')
-        acc = metrics.accuracy(labels_hat, y,class_reduction='weighted')
+        f1 = metrics.f1_score(labels_hat,y,    class_reduction='weighted')
+
+        prec =metrics.precision(labels_hat,y,  class_reduction='weighted')
+        recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
+        acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
 
         self.log('val_prec',prec)
         self.log('val_f1',f1)

@@ -56,7 +56,7 @@ def main(hparams) -> None:
     # 6 START TRAINING
     # ------------------------
 
-    datamodule = MedNLIDataModule
+    # datamodule = MedNLIDataModule
     trainer.fit(model, model.data)
     trainer.test(model, model.data.test_dataloader())
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     )
 
     # gpu args
-    parser.add_argument("--gpus", type=int, default=1, help="How many gpus")
+    parser.add_argument("--gpus", type=str, default=1, help="How many gpus")
 
 
 

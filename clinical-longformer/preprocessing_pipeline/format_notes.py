@@ -4,13 +4,15 @@ import itertools as it
 import string
 from pathlib import Path
 import pandas as pd
+import os
 from loguru import logger
 from tqdm import tqdm
 
-# MIMIC_DIR = Path("./data/mimiciii-14/")
-NOTE_EVENTS_CSV_FP = './data/physionet.org/files/mimiciii/1.4/NOTEEVENTS.csv.gz'
+data_dir = Path("./data/physionet.org/files/mimiciii/1.4/zipped_data/")
 
-FILTERED_NOTE_EVENTS_CSV_FP = './data/physionet.org/files/mimiciii/1.4/NOTEEVENTS.FILTERED.csv.gz'
+NOTE_EVENTS_CSV_FP = f'{data_dir}/NOTEEVENTS.csv.gz'
+
+FILTERED_NOTE_EVENTS_CSV_FP = f'{data_dir}/NOTEEVENTS.FILTERED.csv.gz'
 
 ADMIN_LANGUAGE = [
     "FINAL REPORT",
@@ -59,11 +61,14 @@ ADMIN_LANGUAGE = [
 ]
 
 def main():
-    logger.info(f"loading {NOTE_EVENTS_CSV_FP} into memory")
-    notes_df = pd.read_csv(NOTE_EVENTS_CSV_FP, low_memory=False)
-    notes_filtered_df = preprocess_and_clean_notes(notes_df)
-    logger.warning('Saving to CSV. May take a few minutes...')
-    notes_filtered_df.to_csv(FILTERED_NOTE_EVENTS_CSV_FP)
+    if os.path.exists(FILTERED_NOTE_EVENTS_CSV_FP): 
+        logger.info(f"It appears the following file: {FILTERED_NOTE_EVENTS_CSV_FP} has been created already! We can use that already")
+    else:
+        logger.info(f"loading {NOTE_EVENTS_CSV_FP} into memory")
+        notes_df = pd.read_csv(NOTE_EVENTS_CSV_FP, low_memory=False)
+        notes_filtered_df = preprocess_and_clean_notes(notes_df)
+        logger.warning('Saving to CSV. May take a few minutes...')
+        notes_filtered_df.to_csv(FILTERED_NOTE_EVENTS_CSV_FP)
 
 def preprocess_and_clean_notes(notes_df: pd.DataFrame) -> pd.DataFrame:
     """remove redundant information from the free text, which are discharge summaries,

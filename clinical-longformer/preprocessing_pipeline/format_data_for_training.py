@@ -14,11 +14,14 @@ import pandas as pd
 import numpy as np
 from loguru import logger
 
-DIAGNOSIS_CSV_FP   = "./data/physionet.org/files/mimiciii/1.4/DIAGNOSES_ICD.csv.gz"
-PROCEDURES_CSV_FP  = "./data/physionet.org/files/mimiciii/1.4/PROCEDURES_ICD.csv.gz"
-ICD9_DIAG_KEY_FP   = "./data/physionet.org/files/mimiciii/1.4/D_ICD_DIAGNOSES.csv.gz"
-ICD9_PROC_KEY_FP   = "./data/physionet.org/files/mimiciii/1.4/D_ICD_PROCEDURES.csv.gz"
-NOTE_EVENTS_CSV_FP = "./data/physionet.org/files/mimiciii/1.4/NOTEEVENTS.FILTERED.csv.gz"
+
+data_dir = Path("./data/physionet.org/files/mimiciii/1.4/zipped_data/")
+
+DIAGNOSIS_CSV_FP   = f"{data_dir}/DIAGNOSES_ICD.csv.gz"
+PROCEDURES_CSV_FP  = f"{data_dir}/PROCEDURES_ICD.csv.gz"
+ICD9_DIAG_KEY_FP   = f"{data_dir}/D_ICD_DIAGNOSES.csv.gz"
+ICD9_PROC_KEY_FP   = f"{data_dir}/D_ICD_PROCEDURES.csv.gz"
+NOTE_EVENTS_CSV_FP = f"{data_dir}/NOTEEVENTS.FILTERED.csv.gz"
 
 
 with open('params.yaml', 'r') as f:
