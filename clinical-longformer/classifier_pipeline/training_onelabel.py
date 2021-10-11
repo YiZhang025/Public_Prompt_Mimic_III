@@ -49,7 +49,8 @@ def main(hparams) -> None:
         fast_dev_run=hparams.fast_dev_run,
         accumulate_grad_batches=hparams.accumulate_grad_batches,
         max_epochs=hparams.max_epochs,
-        default_root_dir=f'./classifier_pipeline/{hparams.encoder_model}'
+        default_root_dir=f'./classifier_pipeline/{hparams.encoder_model}',
+        accelerator = hparams.dp
     )
 
     # ------------------------
@@ -131,10 +132,12 @@ if __name__ == "__main__":
         ),
     )
 
-    # gpu args
-    parser.add_argument("--gpus", type=str, default=1, help="How many gpus")
+    # gpu args - 
+    parser.add_argument("--gpus", type=str, default=1, help="Which gpu device to use e.g. 0 for cuda:0, or for more gpus use comma separated e.g. 0,1,2")
 
-
+    # use ddp 
+    parser.add_argument("--dp",default = None, type=str, help ="whether or not to use data paralell and switch accelerator for trainer class. Use dp")
+    
 
     # each LightningModule defines arguments relevant to it
     parser = Classifier.add_model_specific_args(parser)

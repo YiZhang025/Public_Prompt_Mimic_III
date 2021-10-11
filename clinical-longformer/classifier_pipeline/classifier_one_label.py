@@ -20,8 +20,12 @@ from tokenizer import Tokenizer
 from torchnlp.encoders import LabelEncoder
 from torchnlp.utils import collate_tensors, lengths_to_mask
 from utils import mask_fill
-import pytorch_lightning
-import pytorch_lightning.metrics.functional.classification as metrics
+
+import torchmetrics.functional.classification as metrics
+# below pytorch... does not work with later versions, cannot figure out which version it worked with in first place
+# import pytorch_lightning.metrics.functional.classification as old_metrics
+
+from sklearn import metrics as skmetrics
 
 from loguru import logger
 
@@ -452,23 +456,24 @@ class Classifier(pl.LightningModule):
         labels_hat = torch.argmax(y_hat, dim=1)
         y=targets['labels']
 
-        # didn't work wiith version of pytorch_lightning - 
-        f1 = metrics.f1_score(labels_hat,y,    class_reduction='weighted')
-        prec =metrics.precision(labels_hat,y,  class_reduction='weighted')
-        recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
-        acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
 
-        # f1 = pytorch_lightning.metrics.functional.f1(labels_hat,y)
-        # prec =metrics.Precision(labels_hat,y,  class_reduction='weighted')
-        # recall = metrics.Recall(labels_hat,y,  class_reduction='weighted')
-        # acc = metrics.Accuracy(labels_hat,y,   class_reduction='weighted')
+        # didn't work wiith version of pytorch_lightning - 
+        # f1 = metrics.f1_score(labels_hat,y,    class_reduction='weighted')
+        # prec =metrics.precision(labels_hat,y,  class_reduction='weighted')
+        # recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
+        # acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
+
+        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = 50)
+        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = 50)
+        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = 50)
+        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = 50)
 
         self.log('test_batch_prec',prec)
         self.log('test_batch_f1',f1)
         self.log('test_batch_recall',recall)
         self.log('test_batch_weighted_acc', acc)
 
-        cm = metrics.ConfusionMatrix(pred = labels_hat,target=y,normalize=False)
+        cm = metrics.confusion_matrix(preds = labels_hat,target=y, num_classes =50)
         self.test_conf_matrices.append(cm)
 
 
@@ -485,6 +490,13 @@ class Classifier(pl.LightningModule):
         y = targets["labels"]
         y_hat = model_out["logits"]
 
+        if self.hparams.fast_dev_run:
+            
+            print(f"f y_hats:: {y_hat[0:50]}")
+            print(f"f_hats shape is : {y_hat.shape}")
+            print(f"labels predicted are: { torch.argmax(y_hat, dim=1)}")
+            print(f"y targets = {y}")
+
         # acc
         labels_hat = torch.argmax(y_hat, dim=1)
         val_acc = torch.sum(y == labels_hat).item() / (len(y) * 1.0)
@@ -498,19 +510,29 @@ class Classifier(pl.LightningModule):
             loss_val = loss_val.unsqueeze(0)
             val_acc = val_acc.unsqueeze(0)
 
+        # print(f"one example of the logits: {y_hat[0:50]}")
+        # print(f"20 of the predicted labels:{labels_hat[0:20]}")     
+        # print(f"20 of the labels:{y}")        
+        
+        self.log('val_loss',loss_val,prog_bar=True)
 
-        self.log('val_loss',loss_val)
+        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = 50)
+        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = 50)
+        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = 50)
+        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = 50)
 
-        f1 = metrics.f1_score(labels_hat,y,    class_reduction='weighted')
-
-        prec =metrics.precision(labels_hat,y,  class_reduction='weighted')
-        recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
-        acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
+        # print(f"f1 from torch metrics is: ", f1)
+        # print(f"f1 from pytorch metrics is : { old_metrics.f1_score(labels_hat,y,    class_reduction='weighted')}")
+        # print(f"F1 from sk learn is : {skmetrics.f1_score(y,labels_hat, average='weighted')}")
+        # logger.info("val_prec at moment is: ",prec)
+        # logger.info("val_f1 at moment is: ",f1)
 
         self.log('val_prec',prec)
         self.log('val_f1',f1)
         self.log('val_recall',recall)
-        self.log('val_acc_weighted', acc)
+        self.log('val_acc_weighted', acc,prog_bar=True)
+
+        
         # self.log('val_cm',cm)
         
 
