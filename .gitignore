@@ -138,4 +138,6 @@ dmypy.json
 /data/
 ./data/*
 data/*
-
+/pretrained_models/
+/pretrained_models/*
+pretrained_models/*
