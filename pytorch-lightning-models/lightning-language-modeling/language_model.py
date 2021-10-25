@@ -31,7 +31,7 @@ class LMModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         loss = self.model(**batch).loss
-        self.log('valid_loss', loss, on_step=True, sync_dist=True)
+        self.log('valid_loss', loss, on_step=True) # sync_dist=True if using gpu - although has version issues, best to avoid
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(),
