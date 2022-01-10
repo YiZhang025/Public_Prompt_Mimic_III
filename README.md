@@ -12,7 +12,7 @@ and later extend these to NHS datasets/Chronos. Link to google docs containing m
 - [ ] Develop manual prompts to use for either GPT or BERT based prompt models. Can try tools such as: https://github.com/thunlp/OpenPrompt or  https://github.com/bigscience-workshop/promptsource
 - [ ] Attempt to use autoprompt methods e.g.  https://github.com/ucinlp/autoprompt/tree/master/autoprompt
 - [ ] Look at sentence level prompt methods: e.g.  https://arxiv.org/abs/2109.03564    
-- [ ] Look at zero short performance of large language models
+- [ ] Look at zero short performance of large language models and also prompt based models already trained on many tasks e.g. https://huggingface.co/spaces/akhaliq/T0pp
 - [ ] Few shot learning?
 - [ ] Train with the embedding prompt as part of the pre-training task
 
