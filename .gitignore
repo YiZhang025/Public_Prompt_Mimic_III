@@ -141,3 +141,8 @@ data/*
 /pretrained_models/
 /pretrained_models/*
 pretrained_models/*
+/clinical-longformer/experiments/*
+/clinical-longformer/experiments/
+pytorch-lightning-models/checkpoints/*
+pytorch-lightning-models/checkpoints/
+pytorch-lightning-models/lightning_logs/*

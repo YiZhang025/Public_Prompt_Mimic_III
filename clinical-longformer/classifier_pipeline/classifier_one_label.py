@@ -108,6 +108,7 @@ class Classifier(pl.LightningModule):
     class DataModule(pl.LightningDataModule):
         def __init__(self, classifier_instance):
             super().__init__()
+            
             self.hparams = classifier_instance.hparams
 
 
@@ -193,7 +194,7 @@ class Classifier(pl.LightningModule):
 
     def __init__(self, hparams: Namespace) -> None:
         super(Classifier,self).__init__()
-
+        self.save_hyperparameters()
         self.hparams = hparams
         self.batch_size = hparams.batch_size
         

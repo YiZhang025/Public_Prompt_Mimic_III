@@ -35,7 +35,7 @@ def main(hparams) -> None:
     
 
     tb_logger = TensorBoardLogger(
-        save_dir='experiments/',
+        save_dir='experiments_test/',
         version="version_" + datetime.now().strftime("%d-%m-%Y--%H-%M-%S"),
         name=f'{hparams.encoder_model}',
     )
@@ -44,7 +44,7 @@ def main(hparams) -> None:
     # ------------------------
     trainer = Trainer(
         logger=tb_logger,
-        gpus=hparams.gpus,
+        gpus=None,
         log_gpu_memory="all",
         fast_dev_run=hparams.fast_dev_run,
         accumulate_grad_batches=hparams.accumulate_grad_batches,
