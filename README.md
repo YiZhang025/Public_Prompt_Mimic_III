@@ -1,5 +1,12 @@
-# NLP_Mimic
+# Repo to contain code relating to DPhil projects of Niall Taylor
 
+The plan as it stands is to conduct a review of state of the art text classification NLP models such as BERT and GPT based models to a benchmark clinical dataset in MIMIC-III
+and later extend these to NHS datasets/Chronos. Link to google docs containing more general information and notes: https://docs.google.com/document/d/12cKS6lOWvRnsxwUouL2A4_DNFlUyv_vziJenXiKNt9s/edit#
+
+For more detailed plans regarding this codebase - see issues, which are much easier to update and track than readme.
+
+
+# Setup of repo on local machine
 
 ## create virtual python environment 
 This will depend on OS and how python is installed. On linux can use either conda or venv. 
