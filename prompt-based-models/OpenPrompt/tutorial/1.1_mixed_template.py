@@ -60,7 +60,7 @@ myverbalizer.process_logits(logits)
 from openprompt import PromptForClassification
 
 use_cuda = True
-prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=False)
+prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=True)
 if use_cuda:
     prompt_model=  prompt_model.cuda()
 
@@ -93,6 +93,8 @@ for epoch in range(10):
             inputs = inputs.cuda()
         logits = prompt_model(inputs)
         labels = inputs['label']
+        # print(logits)
+        # print(labels)
         loss = loss_func(logits, labels)
         loss.backward()
         tot_loss += loss.item()
@@ -100,7 +102,8 @@ for epoch in range(10):
         optimizer1.zero_grad()
         optimizer2.step()
         optimizer2.zero_grad()
-        print(tot_loss/(step+1))
+        # print(tot_loss/(step+1))
+    print(f"finished epoch: {epoch}. Loss at moment is: {tot_loss/len(train_dataloader)} or : {tot_loss/(step+1)}")
     
 # ## evaluate
 

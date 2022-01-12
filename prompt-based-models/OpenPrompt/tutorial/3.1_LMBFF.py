@@ -105,6 +105,7 @@ def evaluate(model, val_dataloader):
 # %%
 from tqdm import tqdm
 # template generation
+auto_t = False
 if auto_t:
     print('performing auto_t...')
 
@@ -116,12 +117,16 @@ if auto_t:
     dataloader = PromptDataLoader(dataset['train'], template, template_generate_tokenizer, template_tokenizer_wrapper, batch_size=len(dataset['train']), decoder_max_length=128) # register all data at once
     for data in dataloader:
         if cuda:
+            print("cude true")
             data = data.cuda()
         template_generator._register_buffer(data)
-        
+    
+    print(f"template generator: {template_generator}")
     template_generate_model.eval()
     print('generating...')
     template_texts = template_generator._get_templates()
+
+    print(f"template texts: {template_texts}")
 
     original_template = template.text
     template_texts = [template_generator.convert_template(template_text, original_template) for template_text in template_texts]
@@ -178,6 +183,7 @@ if auto_v:
         if cuda:
             data = data.cuda()
         verbalizer_generator.register_buffer(data)
+        print(verbalizer_generator)
     label_words_list = verbalizer_generator.generate()
     verbalizer_generator.release_memory()
 
