@@ -36,9 +36,10 @@ dataset['support'] = support_sampler(dataset['train'], seed=1)
 
 for example in dataset['support']:
     example.label = -1 # remove the labels of support set for clarification
+
 support_dataloader = PromptDataLoader(dataset=dataset["support"], template=mytemplate, tokenizer=tokenizer, 
     tokenizer_wrapper_class=WrapperClass, max_seq_length=512, decoder_max_length=3, 
-    batch_size=5,shuffle=False, teacher_forcing=False, predict_eos_token=False,
+    batch_size=2,shuffle=False, teacher_forcing=False, predict_eos_token=False,
     truncate_method="tail")
 
 
@@ -63,7 +64,7 @@ print("Original number of label words per class: {} \n After filtering, number o
 # zero-shot test
 test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
     tokenizer_wrapper_class=WrapperClass, max_seq_length=512, decoder_max_length=3, 
-    batch_size=5,shuffle=False, teacher_forcing=False, predict_eos_token=False,
+    batch_size=2,shuffle=False, teacher_forcing=False, predict_eos_token=False,
     truncate_method="tail")
 allpreds = []
 alllabels = []

@@ -12,11 +12,13 @@ dataset['test'] = AgnewsProcessor().get_test_examples("./datasets/TextClassifica
 
 from openprompt.plms import load_plm
 
-plm, tokenizer, model_config, WrapperClass = load_plm("t5", "t5-base")
+# plm, tokenizer, model_config, WrapperClass = load_plm("t5", "t5-base")
+plm, tokenizer, model_config, WrapperClass = load_plm("roberta", "roberta-large")
 
 
 from openprompt.prompts import ManualTemplate
-mytemplate = ManualTemplate(tokenizer=tokenizer, text='{"placeholder":"text_a"} {"placeholder":"text_b"} In this sentence, the topic is {"mask"}.')
+# mytemplate = ManualTemplate(tokenizer=tokenizer, text='{"placeholder":"text_a"} {"placeholder":"text_b"} In this sentence, the topic is {"mask"}.')
+mytemplate = ManualTemplate(tokenizer=tokenizer).from_file("scripts/TextClassification/agnews/manual_template.txt", choice=0)
 
 
 wrapped_example = mytemplate.wrap_one_example(dataset['train'][0]) 
@@ -25,22 +27,26 @@ print(wrapped_example)
 from openprompt import PromptDataLoader
 
 train_dataloader = PromptDataLoader(dataset=dataset["train"], template=mytemplate, tokenizer=tokenizer, 
-    tokenizer_wrapper_class=WrapperClass, max_seq_length=256, decoder_max_length=3, 
-    batch_size=4,shuffle=True, teacher_forcing=False, predict_eos_token=False,
-    truncate_method="head")
+    tokenizer_wrapper_class=WrapperClass, max_seq_length=512, decoder_max_length=3, 
+    batch_size=2,shuffle=True, teacher_forcing=False, predict_eos_token=False,
+    truncate_method="tail")
 # next(iter(train_dataloader))
 
 # ## Define the verbalizer
 # In classification, you need to define your verbalizer, which is a mapping from logits on the vocabulary to the final label probability. Let's have a look at the verbalizer details:
 
-from openprompt.prompts import SoftVerbalizer
+from openprompt.prompts import SoftVerbalizer, ManualVerbalizer
 import torch
 
 # for example the verbalizer contains multiple label words in each class
 # myverbalizer = SoftVerbalizer(tokenizer, plm, num_classes=4,
 #          label_words=["politics", "sports", "business", "technology"])
 # or without label words
-myverbalizer = SoftVerbalizer(tokenizer, plm, num_classes=4)
+# myverbalizer = SoftVerbalizer(tokenizer, plm, num_classes=4)
+
+# or manual
+myverbalizer = ManualVerbalizer(tokenizer, num_classes=4).from_file("scripts/TextClassification/agnews/manual_verbalizer.txt")
+
 
 
 from openprompt import PromptForClassification
@@ -66,17 +72,18 @@ optimizer_grouped_parameters1 = [
 
 # Using different optimizer for prompt parameters and model parameters
 
-optimizer_grouped_parameters2 = [
-    {'params': prompt_model.verbalizer.group_parameters_1, "lr":3e-5},
-    {'params': prompt_model.verbalizer.group_parameters_2, "lr":3e-4},
-]
+# optimizer_grouped_parameters2 = [
+#     {'params': prompt_model.verbalizer.group_parameters_1, "lr":3e-5},
+#     {'params': prompt_model.verbalizer.group_parameters_2, "lr":3e-4},
+# ]
 
 
 optimizer1 = AdamW(optimizer_grouped_parameters1, lr=3e-5)
-optimizer2 = AdamW(optimizer_grouped_parameters2)
+# optimizer2 = AdamW(optimizer_grouped_parameters2)
 
 
 for epoch in range(5):
+    print(f"On epoch: {epoch}")
     tot_loss = 0 
     for step, inputs in enumerate(train_dataloader):
         if use_cuda:
@@ -88,47 +95,51 @@ for epoch in range(5):
         tot_loss += loss.item()
         optimizer1.step()
         optimizer1.zero_grad()
-        optimizer2.step()
-        optimizer2.zero_grad()
+        # optimizer2.step()
+        # optimizer2.zero_grad()
         print(tot_loss/(step+1))
     
 # ## evaluate
 
 # %%
+
+print("running validation!")
 validation_dataloader = PromptDataLoader(dataset=dataset["validation"], template=mytemplate, tokenizer=tokenizer, 
-    tokenizer_wrapper_class=WrapperClass, max_seq_length=256, decoder_max_length=3, 
-    batch_size=4,shuffle=False, teacher_forcing=False, predict_eos_token=False,
+    tokenizer_wrapper_class=WrapperClass, max_seq_length=512, decoder_max_length=3, 
+    batch_size=2,shuffle=False, teacher_forcing=False, predict_eos_token=False,
     truncate_method="head")
 
 prompt_model.eval()
 
 allpreds = []
 alllabels = []
-for step, inputs in enumerate(validation_dataloader):
-    if use_cuda:
-        inputs = inputs.cuda()
-    logits = prompt_model(inputs)
-    labels = inputs['label']
-    alllabels.extend(labels.cpu().tolist())
-    allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
+with torch.no_grad():
+    for step, inputs in enumerate(validation_dataloader):
+        if use_cuda:
+            inputs = inputs.cuda()
+        logits = prompt_model(inputs)
+        labels = inputs['label']
+        alllabels.extend(labels.cpu().tolist())
+        allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 
 acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
 print("validation:",acc)
 
 
 test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
-    tokenizer_wrapper_class=WrapperClass, max_seq_length=256, decoder_max_length=3, 
-    batch_size=4,shuffle=False, teacher_forcing=False, predict_eos_token=False,
+    tokenizer_wrapper_class=WrapperClass, max_seq_length=512, decoder_max_length=3, 
+    batch_size=2,shuffle=False, teacher_forcing=False, predict_eos_token=False,
     truncate_method="head")
 allpreds = []
 alllabels = []
-for step, inputs in enumerate(test_dataloader):
-    if use_cuda:
-        inputs = inputs.cuda()
-    logits = prompt_model(inputs)
-    labels = inputs['label']
-    alllabels.extend(labels.cpu().tolist())
-    allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
+with torch.no_grad():
+    for step, inputs in enumerate(test_dataloader):
+        if use_cuda:
+            inputs = inputs.cuda()
+        logits = prompt_model(inputs)
+        labels = inputs['label']
+        alllabels.extend(labels.cpu().tolist())
+        allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
 print("test:", acc)  # roughly ~0.85
 
