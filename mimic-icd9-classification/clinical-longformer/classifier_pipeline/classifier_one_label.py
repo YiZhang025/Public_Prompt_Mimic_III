@@ -142,7 +142,7 @@ class Classifier(pl.LightningModule):
         
             df = pd.read_csv(path)
             df = df[["TEXT", "ICD9_CODE"]]
-            df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'})
+            df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'})           
 
             df = df[df['label'].isin(self.top_codes)]
             df["text"] = df["text"].astype(str)

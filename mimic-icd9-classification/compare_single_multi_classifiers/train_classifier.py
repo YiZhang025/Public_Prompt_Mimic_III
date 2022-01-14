@@ -51,6 +51,30 @@ def get_class_weights(train_df, label_col):
 def read_csv(data_dir,filename):
     return pd.read_csv(f"{data_dir}{filename}", index_col=None)
 
+def get_mimic_data(self, top_codes, path: str) -> list: #REWRITE
+            """ Reads a comma separated value file.
+
+            :param path: path to a csv file.
+            
+            :return: List of records as dictionaries
+            """
+        
+            df = pd.read_csv(path)
+            df = df[["TEXT", "ICD9_CODE"]]
+            df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'})
+
+            df = df[df['label'].isin(top_codes)]
+            #TODO - create logic to select only a subset of the top 50 icd9 codes - e.g...
+
+
+            df["text"] = df["text"].astype(str)
+            df["label"] = df["label"].astype(str)
+
+            df.to_csv(f'{path}_top_codes_filtered.csv')
+
+            logger.warning(f'{path} dataframe has {len(df)} examples.' )
+            return df.to_dict("records")
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -169,6 +193,15 @@ def main():
     # load tokenizer
     print(f"loading tokenizer : {pretrained_dir}{pretrained_model_name}")
     tokenizer = AutoTokenizer.from_pretrained(f"{pretrained_dir}/{pretrained_model_name}/tokenizer")
+
+
+    #TODO edit to load mimic codes
+    transformer_type = self.hparams.transformer_type
+
+    n_labels = 50
+    top_codes = pd.read_csv(self.hparams.train_csv)['ICD9_CODE'].value_counts()[:self.n_labels].index.tolist()
+    logger.warning(f'Classifying against the top {self.n_labels} most frequent ICD codes: {self.top_codes}')
+
 
     # read in training and validation data
     train_df = read_csv(data_dir, args.training_file)
