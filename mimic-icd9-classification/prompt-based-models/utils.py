@@ -99,7 +99,7 @@ class Mimic_ICD9_Processor(DataProcessor):
             raise NotImplementedError
 
     
-    def load_class_labels(self, file_path = "./scripts/labels.txt"):
+    def load_class_labels(self, file_path = "./scripts/mimic_icd9_top50/labels.txt"):
         # function to load pre-generated class labels
         # returns list of class labels
 

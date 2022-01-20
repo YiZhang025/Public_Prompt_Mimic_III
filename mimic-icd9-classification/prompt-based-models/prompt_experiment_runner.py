@@ -112,7 +112,7 @@ dataset = {}
 if args.dataset == "icd9_50":
     Processor = MimicProcessor
     # get different splits
-    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")[:5000]
+    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")[:500]
     dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")[:200]
     dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")[:200]
     # the below class labels should align with the label encoder fitted to training data
@@ -335,11 +335,15 @@ for epoch in range(2):
         if scheduler_verb is not None:
             scheduler_verb.step()
 
+         
+        
         if step %50 ==1:
             aveloss = tot_loss/(step+1)
-            print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)
             # write to tensorboard
-            writer.add_scalar("train/loss", aveloss, step)
+            writer.add_scalar("train/loss", aveloss,step)
+            writer.flush()
+           
+            print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)
     
 # ## evaluate
 

@@ -18,7 +18,7 @@ plm, tokenizer, model_config, WrapperClass = load_plm("t5", "t5-base")
 
 from openprompt.prompts import ManualTemplate
 # mytemplate = ManualTemplate(tokenizer=tokenizer, text='{"placeholder":"text_a"} {"placeholder":"text_b"} In this sentence, the topic is {"mask"}.')
-mytemplate = ManualTemplate(tokenizer=tokenizer).from_file("scripts/manual_template.txt", choice=2)
+mytemplate = ManualTemplate(tokenizer=tokenizer).from_file("scripts/mimic_icd9_top50/manual_template.txt", choice=2)
 
 
 wrapped_example = mytemplate.wrap_one_example(dataset['train'][0]) 

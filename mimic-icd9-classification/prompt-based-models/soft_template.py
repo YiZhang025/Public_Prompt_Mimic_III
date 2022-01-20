@@ -10,6 +10,12 @@ from openprompt.prompts import ManualVerbalizer
 from openprompt.prompts import SoftTemplate
 from openprompt import PromptForClassification
 
+
+from openprompt.plms.seq2seq import T5TokenizerWrapper, T5LMTokenizerWrapper
+from transformers import T5Config, T5Tokenizer, T5ForConditionalGeneration
+from openprompt.data_utils.data_sampler import FewShotSampler
+from openprompt.plms import load_plm
+
 from utils import Mimic_ICD9_Processor as MimicProcessor
 import time
 import os
@@ -26,12 +32,14 @@ parser.add_argument("--project_root", default="/home/niallt/NLP_DPhil/DPhil_proj
 parser.add_argument("--template_id", type=int, default = 0)
 parser.add_argument("--verbalizer_id", type=int, default = 0)
 parser.add_argument("--data_dir", type=str, default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/clinical-longformer/data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
-parser.add_argument("--dataset",type=str)
-parser.add_argument("--result_file", type=str, default="./st_results/results.txt")
-parser.add_argument("--class_labels_file", type=str, default="./scripts/labels.txt")
+parser.add_argument("--dataset",type=str, default = "icd9_50")
+parser.add_argument("--result_file", type=str, default="./mimic_icd9_top50/st_results/results.txt")
+parser.add_argument("--scripts_path", type=str, default="./scripts/mimic_icd9_top50/")
+parser.add_argument("--class_labels_file", type=str, default="./scripts/mimic_icd9_top50/labels.txt")
 parser.add_argument("--max_steps", default=20000, type=int)
 parser.add_argument("--prompt_lr", type=float, default=0.3)
 parser.add_argument("--warmup_step_prompt", type=int, default=500)
+parser.add_argument("--num_epochs", type=int, default=5)
 parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=500)
 parser.add_argument("--soft_token_num", type=int, default=20)
@@ -58,17 +66,12 @@ content_write += "\n"
 
 print(content_write)
 
+
 import random
 this_run_unicode = str(random.randint(0, 1e10))
 
 from openprompt.utils.reproduciblity import set_seed
 set_seed(args.seed)
-
-from utils import MimicProcessor
-from openprompt.plms.seq2seq import T5TokenizerWrapper, T5LMTokenizerWrapper
-from transformers import T5Config, T5Tokenizer, T5ForConditionalGeneration
-from openprompt.data_utils.data_sampler import FewShotSampler
-from openprompt.plms import load_plm
 
 plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_name_or_path)
 dataset = {}
@@ -77,14 +80,15 @@ dataset = {}
 if args.dataset == "icd9_50":
     Processor = MimicProcessor
     # get different splits
-    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")[:10000]
-    dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")[:500]
-    dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")[:500]
+    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")[:100]
+    dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")[:100]
+    dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")[:100]
     # the below class labels should align with the label encoder fitted to training data
     # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
     # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
     class_labels =Processor().load_class_labels(file_path = args.class_labels_file)
-    scriptsbase = "scripts/"
+    print(f"class labels: {class_labels} with a length of : {len(class_labels)}")
+    scriptsbase = args.scripts_path
     scriptformat = "txt"
     max_seq_l = 480 # this should be specified according to the running GPU's capacity 
     if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
@@ -107,7 +111,7 @@ else:
 # Note that soft template can be combined with hard template, by loading the hard template from file. 
 # For example, the template in soft_template.txt is {}
 # The choice_id 1 is the hard template 
-mytemplate = SoftTemplate(model=plm, tokenizer=tokenizer, num_tokens=args.soft_token_num, initialize_from_vocab=args.init_from_vocab).from_file(f"scripts/{scriptsbase}/soft_template.txt", choice=args.template_id)
+mytemplate = SoftTemplate(model=plm, tokenizer=tokenizer, num_tokens=args.soft_token_num, initialize_from_vocab=args.init_from_vocab).from_file(f"{scriptsbase}/soft_template.txt", choice=args.template_id)
 myverbalizer = ManualVerbalizer(tokenizer, classes=class_labels).from_file(f"{scriptsbase}/manual_verbalizer.{scriptformat}", choice=args.verbalizer_id)
 wrapped_example = mytemplate.wrap_one_example(dataset['train'][0]) 
 print(wrapped_example)
@@ -153,6 +157,7 @@ def evaluate(prompt_model, dataloader, desc):
         alllabels.extend(labels.cpu().tolist())
         allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
     acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
+    print(f"val acc: {acc}")
     return acc
 
 from transformers import  AdamW, get_linear_schedule_with_warmup,get_constant_schedule_with_warmup  # use AdamW is a standard practice for transformer 
@@ -205,14 +210,15 @@ pbar_update_freq = 10
 prompt_model.train()
 
 pbar = tqdm(total=tot_step, desc="Train")
-for epoch in range(args.num_epochs):
+for epoch in range(1000000):
     print(f"Begin epoch {epoch}")
     for step, inputs in enumerate(train_dataloader):
         if use_cuda:
             inputs = inputs.cuda()
         tot_train_time -= time.time()
-        logits = prompt_model(inputs)
-        labels = inputs['label']
+        logits = prompt_model(inputs)     
+
+        labels = inputs['label']        
         loss = loss_func(logits, labels)
         loss.backward()
         tot_loss += loss.item()
@@ -244,21 +250,26 @@ for epoch in range(args.num_epochs):
         if actual_step % gradient_accumulation_steps == 0 and glb_step >0 and glb_step % args.eval_every_steps == 0:
             val_acc = evaluate(prompt_model, validation_dataloader, desc="Valid")
             if val_acc >= best_val_acc:
-                torch.save(prompt_model.state_dict(),f"{args.project_root}/../ckpts/{this_run_unicode}.ckpt")
+                torch.save(prompt_model.state_dict(),f"{args.project_root}/ckpts/{this_run_unicode}.ckpt")
                 best_val_acc = val_acc
             
             acc_traces.append(val_acc)
+            
             print("Glb_step {}, val_acc {}, average time {}".format(glb_step, val_acc, tot_train_time/actual_step ), flush=True)
             prompt_model.train()
 
         if glb_step > args.max_steps:
+            print("apprently we are already past max step")
+            print(f"global step: {glb_step}")
+            print(f"max_step: {args.max_steps}")
             leave_training = True
             break
     
     if leave_training:
+        print("we are leaving training")
         break  
     
-    
+print("we have left training")
 # # super_glue test split can not be evaluated without submitting the results to their website. So we skip it here and keep them as comments.
 #
 # prompt_model.load_state_dict(torch.load(f"{args.project_root}/ckpts/{this_run_unicode}.ckpt"))
@@ -279,7 +290,8 @@ for val_time, acc in enumerate(acc_traces):
             if acc>=thres100:
                 step100 = min(val_time*args.eval_every_steps, step100)
 
-
+print(f"acc traces at this point: {acc_traces}")
+print(f"best val acc at this point: {best_val_acc}")
 content_write += f"BestValAcc:{best_val_acc}\tEndValAcc:{acc_traces[-1]}\tcritical_steps:{[step98,step99,step100]}\n"
 content_write += "\n"
 
