@@ -17,6 +17,10 @@ import os
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
+import torchmetrics.functional.classification as metrics
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
+
+
 
 '''
 Script to run different setups of prompt learning.
@@ -95,13 +99,17 @@ version = f"version_{time_now}"
 
 plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_name_or_path)
 
-# set checkpoint and logs save_dirs
-ckpt_dir = f"{args.project_root}/checkpoints/{args.model_name_or_path}/{version}"
-logs_dir = f"{args.project_root}/logs/{args.model_name_or_path}/{version}"
-# check if the checkpoint dir exists  
-import os
+# set checkpoint, logs and results save_dirs
+ckpt_dir = f"{args.project_root}/checkpoints/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+logs_dir = f"{args.project_root}/logs/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+results_dir = f"{args.project_root}/results/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+
+# check if the checkpoint and results dir exists  
+
 if not os.path.exists(ckpt_dir):
     os.makedirs(ckpt_dir)
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
@@ -112,9 +120,9 @@ dataset = {}
 if args.dataset == "icd9_50":
     Processor = MimicProcessor
     # get different splits
-    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")[:500]
-    dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")[:200]
-    dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")[:200]
+    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")
+    dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")
+    dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")
     # the below class labels should align with the label encoder fitted to training data
     # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
     # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
@@ -195,22 +203,6 @@ test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate,
     truncate_method="tail")
 
 print("truncate rate: {}".format(test_dataloader.tokenizer_wrapper.truncate_rate), flush=True)
-
-def evaluate(prompt_model, dataloader, desc):
-    prompt_model.eval()
-    allpreds = []
-    alllabels = []
-   
-    for step, inputs in enumerate(dataloader):
-        if use_cuda:
-            inputs = inputs.cuda()
-        logits = prompt_model(inputs)
-        labels = inputs['label']
-        alllabels.extend(labels.cpu().tolist())
-        allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
-    acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
-    return acc
-
 
 ##############code from soft_verbalizer script ##################################
 from transformers import  AdamW, get_linear_schedule_with_warmup,get_constant_schedule_with_warmup  # use AdamW is a standard practice for transformer 
@@ -294,102 +286,154 @@ elif args.verbalizer_type == "manual":
     scheduler_verb = None
 
 
-for epoch in range(5):
-    print(f"On epoch: {epoch}")
-    tot_loss = 0 
-    epoch_loss = 0
-    for step, inputs in enumerate(train_dataloader):
-        if use_cuda:
-            inputs = inputs.cuda()
-        logits = prompt_model(inputs)
-        labels = inputs['label']
-        # print(f"labels : {labels}")
-        loss = loss_func(logits, labels)
-        loss.backward()
-        tot_loss += loss.item()
+def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir = ckpt_dir):
 
-        # perform backprop and schedular updates
-        # below is from soft_verbalizer
-        # optimizer1.step()
-        # optimizer1.zero_grad()
-        # optimizer2.step()
-        # optimizer2.zero_grad()
-        # print(f"step is: {step}")
+    # set model to train 
+    prompt_model.train()
 
-        #below is from soft_template - much more involved but not working
-        # plm
-        if optimizer_plm is not None:
-            optimizer_plm.step()
-            optimizer_plm.zero_grad()
-        if scheduler_plm is not None:
-            scheduler_plm.step()
-        # template
-        if optimizer_template is not None:
-            optimizer_template.step()
-            optimizer_template.zero_grad()
-        if scheduler_template is not None:
-            scheduler_template.step()
-        # verbalizer
-        if optimizer_verb is not None:
-            optimizer_verb.step()
-            optimizer_verb.zero_grad()
-        if scheduler_verb is not None:
-            scheduler_verb.step()
+    # set up some counters
+    actual_step = 0
+    glb_step = 0
 
-         
-        
-        if step %50 ==49:
-            print(f"step: {step}")
-            aveloss = tot_loss/(step+1)
-            # write to tensorboard
-            writer.add_scalar("train/batch_loss", aveloss,epoch*len(train_dataloader)+1)
+    # some validation metrics to monitor
+    best_val_acc = 0
+    best_val_f1 = 0
+    best_val_prec = 0    
+    best_val_recall = 0
+
+    for epoch in tqdm(range(num_epochs)):
+        print(f"On epoch: {epoch}")
+        tot_loss = 0 
+        epoch_loss = 0
+
+        for step, inputs in enumerate(train_dataloader):
+            if use_cuda:
+                inputs = inputs.cuda()
+            logits = prompt_model(inputs)
+            labels = inputs['label']
+            # print(f"labels : {labels}")
+            loss = loss_func(logits, labels)
+            loss.backward()
+            tot_loss += loss.item()
+
+            actual_step+=1
+            # clip gradients based on gradient accumulation steps
+            if actual_step % gradient_accumulation_steps == 0:
+                torch.nn.utils.clip_grad_norm_(prompt_model.parameters(), 1.0)
+                glb_step += 1
+
+            # log loss to tensorboard    
+            if step %50 ==49:
+               
+                aveloss = tot_loss/(step+1)
+                # write to tensorboard
+                writer.add_scalar("train/batch_loss", aveloss, glb_step)                
             
-           
-            print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)
-    
-    # get epoch loss and write to tensorboard
+                print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)   
 
-    epoch_loss = tot_loss/len(train_dataloader)
-    writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
+            # backprop the loss and update optimizers and then schedulers too
+            # plm
+            if optimizer_plm is not None:
+                optimizer_plm.step()
+                optimizer_plm.zero_grad()
+            if scheduler_plm is not None:
+                scheduler_plm.step()
+            # template
+            if optimizer_template is not None:
+                optimizer_template.step()
+                optimizer_template.zero_grad()
+            if scheduler_template is not None:
+                scheduler_template.step()
+            # verbalizer
+            if optimizer_verb is not None:
+                optimizer_verb.step()
+                optimizer_verb.zero_grad()
+            if scheduler_verb is not None:
+                scheduler_verb.step()
 
-# writer.flush()
+        
+        # get epoch loss and write to tensorboard
+
+        epoch_loss = tot_loss/len(train_dataloader)
+        writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
+
+        # run a run through validation set to get some metrics        
+        val_acc, val_prec, val_recall, val_f1 = evaluate(prompt_model, validation_dataloader)
+
+        writer.add_scalar("valid/accuracy", val_acc, epoch)
+        writer.add_scalar("valid/precision", val_prec, epoch)
+        writer.add_scalar("valid/recall", val_recall, epoch)
+        writer.add_scalar("valid/f1", val_f1, epoch)
+
+        # save checkpoint if validation accuracy improved
+        if val_acc >= best_val_acc:
+            print("Accuracy improved! Saving checkpoint!")
+            torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint.ckpt")
+            best_val_acc = val_acc
+
+   
+
 # ## evaluate
 
 # %%
 
-prompt_model.eval()
+def evaluate(prompt_model, dataloader, mode = "validation"):
+    prompt_model.eval()
 
-allpreds = []
-alllabels = []
-with torch.no_grad():
-    for step, inputs in enumerate(validation_dataloader):
-        if use_cuda:
-            inputs = inputs.cuda()
-        logits = prompt_model(inputs)
-        labels = inputs['label']
-        alllabels.extend(labels.cpu().tolist())
-        allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
+    allpreds = []
+    alllabels = []
+    with torch.no_grad():
+        for step, inputs in enumerate(dataloader):
+            if use_cuda:
+                inputs = inputs.cuda()
+            logits = prompt_model(inputs)
+            labels = inputs['label']
+            alllabels.extend(labels.cpu().tolist())
+            allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 
-print(f"all predictions: {allpreds} ")
-print(f"all labels: {alllabels}")
-acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
-print("validation:",acc)
-writer.add_scalar("valid/accuracy", acc, epoch)
+    acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
+    print(f"accuracy using manual method: {acc}")
+
+    # below is torch metrics but needs to still be tensors
+    # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+    # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
+    # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+    # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+    
+    # get sklearn based metrics
+    f1 = f1_score(alllabels, allpreds, average = 'weighted')
+    prec = precision_score(alllabels, allpreds, average = 'weighted')
+    recall = recall_score(alllabels, allpreds, average = 'weighted')   
+    
+    return acc, prec, recall, f1
 
 
-allpreds = []
-alllabels = []
-with torch.no_grad():
-    for step, inputs in enumerate(test_dataloader):
-        if use_cuda:
-            inputs = inputs.cuda()
-        logits = prompt_model(inputs)
-        labels = inputs['label']
-        alllabels.extend(labels.cpu().tolist())
-        allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
-acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
-print("test:", acc)  
-writer.add_scalar("test/accuracy", acc, epoch)
+# run training
+
+train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
+
+# write the contents to file
+
+print(content_write)
+
+with open(f"{results_dir}/results.txt", "a") as fout:
+    fout.write(content_write)
+
+writer.flush()
+
+# allpreds = []
+# alllabels = []
+# with torch.no_grad():
+#     for step, inputs in enumerate(test_dataloader):
+#         if use_cuda:
+#             inputs = inputs.cuda()
+#         logits = prompt_model(inputs)
+#         labels = inputs['label']
+#         alllabels.extend(labels.cpu().tolist())
+#         allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
+# acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
+# print("test:", acc)  
+# writer.add_scalar("test/accuracy", acc, epoch)
 
 ##############end of code from soft_verbalizer script ##################################
 
