@@ -294,9 +294,10 @@ elif args.verbalizer_type == "manual":
     scheduler_verb = None
 
 
-for epoch in range(2):
+for epoch in range(5):
     print(f"On epoch: {epoch}")
     tot_loss = 0 
+    epoch_loss = 0
     for step, inputs in enumerate(train_dataloader):
         if use_cuda:
             inputs = inputs.cuda()
@@ -337,14 +338,21 @@ for epoch in range(2):
 
          
         
-        if step %50 ==1:
+        if step %50 ==49:
+            print(f"step: {step}")
             aveloss = tot_loss/(step+1)
             # write to tensorboard
-            writer.add_scalar("train/loss", aveloss,step)
-            writer.flush()
+            writer.add_scalar("train/batch_loss", aveloss,epoch*len(train_dataloader)+1)
+            
            
             print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)
     
+    # get epoch loss and write to tensorboard
+
+    epoch_loss = tot_loss/len(train_dataloader)
+    writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
+
+# writer.flush()
 # ## evaluate
 
 # %%
@@ -366,6 +374,7 @@ print(f"all predictions: {allpreds} ")
 print(f"all labels: {alllabels}")
 acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
 print("validation:",acc)
+writer.add_scalar("valid/accuracy", acc, epoch)
 
 
 allpreds = []
@@ -380,6 +389,7 @@ with torch.no_grad():
         allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
 print("test:", acc)  
+writer.add_scalar("test/accuracy", acc, epoch)
 
 ##############end of code from soft_verbalizer script ##################################
 
