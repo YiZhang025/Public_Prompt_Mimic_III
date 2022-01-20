@@ -1,0 +1,4 @@
+Diagnosis is {"mask"}. {"placeholder": "text_a"}
+Patient has diagnosis {"mask"}. {"placeholder": "text_a"}
+{"placeholder": "text_a"} Patient has diagnosis {"mask"}.
+{"placeholder": "text_a"} Diagnosis is {"mask"}.
