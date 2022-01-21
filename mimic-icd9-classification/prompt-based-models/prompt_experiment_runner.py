@@ -25,15 +25,16 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 '''
 Script to run different setups of prompt learning.
 
-BUGGY! At moment when attempting to run the mimic icd9 task using soft_verbalizer and manual_template, as with the soft_verbalizer.py script, performance is awful.
-But the performance is very good in other script...
+Right now this is primarily set up for the mimic_top50_icd9 task, although it is quite flexible to other datasets. Any datasets need a corresponding processor class in utils.
 
-TO DO: 
-- Debug,
+
+example usage. python prompt_experiment_runner.py --model bert --model_name_or_path bert-base-uncased --num_epochs 10 
+
+
 '''
 
 
-
+ # create a args parser with required arguments.
 parser = argparse.ArgumentParser("")
 parser.add_argument("--shot", type=int, default=-1)
 parser.add_argument("--seed", type=int, default=144)
@@ -51,7 +52,7 @@ parser.add_argument("--dataset",type=str, default = "icd9_50")
 parser.add_argument("--result_file", type=str, default="./mimic_icd9_top50/st_results/results.txt")
 parser.add_argument("--scripts_path", type=str, default="./scripts/mimic_icd9_top50/")
 parser.add_argument("--class_labels_file", type=str, default="./scripts/mimic_icd9_top50/labels.txt")
-parser.add_argument("--max_steps", default=20000, type=int)
+parser.add_argument("--max_steps", default=15000, type=int)
 parser.add_argument("--prompt_lr", type=float, default=0.3)
 parser.add_argument("--warmup_step_prompt", type=int, default=100)
 parser.add_argument("--num_epochs", type=int, default=5)
@@ -60,10 +61,11 @@ parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
 parser.add_argument("--optimizer", type=str, default="Adafactor")
+
+# instatiate args and set to variable
 args = parser.parse_args()
 
-args.result_file = os.path.join(args.project_root, args.result_file)
-
+# write arguments to a txt file to go with the model checkpoint and logs
 content_write = "="*20+"\n"
 content_write += f"dataset {args.dataset}\t"
 content_write += f"temp {args.template_id}\t"
@@ -83,7 +85,6 @@ content_write += "\n"
 print(content_write)
 
 import random
-this_run_unicode = str(random.randint(0, 1e10))
 
 from openprompt.utils.reproduciblity import set_seed
 set_seed(args.seed)
@@ -176,7 +177,7 @@ print(wrapped_example)
 
 
 use_cuda = True
-
+#TODO rename tune_plm to freeze_plm... 
 tune_plm = not args.tune_plm
 print(f"tune_plm value: {tune_plm}")
 prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=(not args.tune_plm), plm_eval_mode=args.plm_eval_mode)
@@ -205,15 +206,11 @@ test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate,
 
 print("truncate rate: {}".format(test_dataloader.tokenizer_wrapper.truncate_rate), flush=True)
 
-##############code from soft_verbalizer script ##################################
 from transformers import  AdamW, get_linear_schedule_with_warmup,get_constant_schedule_with_warmup  # use AdamW is a standard practice for transformer 
 from transformers.optimization import Adafactor, AdafactorSchedule  # use Adafactor is the default setting for T5
 loss_func = torch.nn.CrossEntropyLoss()
 
 tot_step = args.max_steps
-
-
-# end 
 
 if args.tune_plm:
     
@@ -305,7 +302,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
                 torch.nn.utils.clip_grad_norm_(prompt_model.parameters(), 1.0)
                 glb_step += 1
 
-            # log loss to tensorboard    
+            # log loss to tensorboard  every 50 steps  
             if step %50 ==49:
                
                 aveloss = tot_loss/(step+1)
@@ -334,6 +331,11 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             if scheduler_verb is not None:
                 scheduler_verb.step()
 
+            # check if we are over max steps
+            if glb_step > args.max_steps:
+                leave_training = True
+                break
+
         
         # get epoch loss and write to tensorboard
 
@@ -353,6 +355,15 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             print("Accuracy improved! Saving checkpoint!")
             torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint.ckpt")
             best_val_acc = val_acc
+
+
+        if glb_step > args.max_steps:
+            leave_training = True
+            break
+    
+        if leave_training:
+            print("Leaving training as max steps have been met!")
+            break 
 
    
 
