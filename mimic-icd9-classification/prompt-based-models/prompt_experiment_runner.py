@@ -39,7 +39,7 @@ parser.add_argument("--shot", type=int, default=-1)
 parser.add_argument("--seed", type=int, default=144)
 parser.add_argument("--plm_eval_mode", action="store_true", help="whether to turn off the dropout in the freezed model. Set to true to turn off.")
 parser.add_argument("--tune_plm", action="store_false")
-parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large.")
+parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
 parser.add_argument("--project_root", default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/prompt-based-models", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
 parser.add_argument("--template_id", type=int, default = 2)
@@ -55,6 +55,7 @@ parser.add_argument("--max_steps", default=20000, type=int)
 parser.add_argument("--prompt_lr", type=float, default=0.3)
 parser.add_argument("--warmup_step_prompt", type=int, default=100)
 parser.add_argument("--num_epochs", type=int, default=5)
+parser.add_argument("--batch_size", type=int, default=4)
 parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
@@ -132,13 +133,13 @@ if args.dataset == "icd9_50":
     scriptformat = "txt"
     max_seq_l = 480 # this should be specified according to the running GPU's capacity 
     if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
-        batchsize_t = 4 
-        batchsize_e = 4
+        batchsize_t = args.batch_size 
+        batchsize_e = args.batch_size
         gradient_accumulation_steps = 4
         model_parallelize = False # if multiple gpus are available, one can use model_parallelize
     else:
-        batchsize_t = 4
-        batchsize_e = 4
+        batchsize_t = args.batch_size
+        batchsize_e = args.batch_size
         gradient_accumulation_steps = 4
         model_parallelize = False
 else:
@@ -211,24 +212,6 @@ loss_func = torch.nn.CrossEntropyLoss()
 
 tot_step = args.max_steps
 
-no_decay = ['bias', 'LayerNorm.weight']
-
-# it's always good practice to set no decay to biase and LayerNorm parameters
-optimizer_grouped_parameters1 = [
-    {'params': [p for n, p in prompt_model.plm.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-    {'params': [p for n, p in prompt_model.plm.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-]
-
-# Using different optimizer for prompt parameters and model parameters
-
-optimizer_grouped_parameters2 = [
-    {'params': prompt_model.verbalizer.group_parameters_1, "lr":3e-5},
-    {'params': prompt_model.verbalizer.group_parameters_2, "lr":3e-4},
-]
-
-
-optimizer1 = AdamW(optimizer_grouped_parameters1, lr=3e-5)
-optimizer2 = AdamW(optimizer_grouped_parameters2)
 
 # end 
 
