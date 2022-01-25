@@ -1,7 +1,7 @@
-# Repo to contain code relating to DPhil projects of Niall Taylor
+# Repo to contain code relating to prompt based models for Mimic-III/Biomedical tasks
 
 The plan as it stands is to conduct a review of state of the art text classification NLP models such as BERT and GPT based models to a benchmark clinical dataset in MIMIC-III
-and later extend these to NHS datasets/Chronos. Link to google docs containing more general information and notes: https://docs.google.com/document/d/12cKS6lOWvRnsxwUouL2A4_DNFlUyv_vziJenXiKNt9s/edit#
+and later extend these to NHS datasets/Chronos.
 
 For more detailed plans regarding this codebase - see issues, which are much easier to update and track than readme.
 
