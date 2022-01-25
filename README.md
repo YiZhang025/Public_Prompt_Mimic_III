@@ -65,3 +65,19 @@ git clone https://github.com/NtaylorOX/Public_Prompt_Mimic_III.git
 pip install -r requirements.txt
 ```
 
+
+# Create new branch 
+
+Generally we should leave master alone for developing any new code or experiments to avoid any clashes. So please follow these steps to create your own branch. Run following from bash/cmd line (wherever you ordinarily put git commands). To create a new branch as a clone of the master branch.
+
+```
+cd repo
+
+# create new branch as clone of master
+git checkout -b new_branch master
+
+```
+This should create a new branch with the name new_branch and switch automatically.
+
+
+
