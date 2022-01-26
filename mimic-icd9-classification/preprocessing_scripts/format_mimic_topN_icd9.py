@@ -32,8 +32,8 @@ def get_topN_mimic_data(path, save_dir, modes = ["train","validate","test"],n_la
         
         # get the top N codes based on frequency in train data
         if mode == "train":
-                top_codes = df['ICD9_CODE'].value_counts()[:n_labels].index.tolist()         
-                print(f"number of codes: {len(top_codes)}")
+            top_codes = df['ICD9_CODE'].value_counts()[:n_labels].index.tolist()         
+            print(f"number of codes: {len(top_codes)}")
         # rename columns
         df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'}) 
         # subset based on icd9 code being in top N
