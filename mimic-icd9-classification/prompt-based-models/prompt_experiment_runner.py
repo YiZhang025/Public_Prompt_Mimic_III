@@ -42,12 +42,12 @@ parser.add_argument("--plm_eval_mode", action="store_true", help="whether to tur
 parser.add_argument("--tune_plm", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
-parser.add_argument("--project_root", default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/prompt-based-models", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
+parser.add_argument("--project_root", default="./", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
 parser.add_argument("--template_id", type=int, default = 2)
 parser.add_argument("--verbalizer_id", type=int, default = 0)
 parser.add_argument("--template_type", type=str, default ="manual")
 parser.add_argument("--verbalizer_type", type=str, default ="soft")
-parser.add_argument("--data_dir", type=str, default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
+parser.add_argument("--data_dir", type=str, default="../data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
 parser.add_argument("--dataset",type=str, default = "icd9_50")
 parser.add_argument("--result_file", type=str, default="./mimic_icd9_top50/st_results/results.txt")
 parser.add_argument("--scripts_path", type=str, default="./scripts/mimic_icd9_top50/")

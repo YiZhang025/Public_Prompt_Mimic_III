@@ -146,3 +146,6 @@ pretrained_models/*
 pytorch-lightning-models/checkpoints/*
 pytorch-lightning-models/checkpoints/
 pytorch-lightning-models/lightning_logs/*
+mimic-icd9-classification/prompt-based-models/logs/*
+mimic-icd9-classification/prompt-based-models/checkpoints/*
+mimic-icd9-classification/data/*

@@ -1,5 +1,0 @@
-{
-    "contradiction": ["no", "false"],
-    "entailment": ["yes", "true"],
-    "neutral": ["uncertain", "neutral"]
-}
