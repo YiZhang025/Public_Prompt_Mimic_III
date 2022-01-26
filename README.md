@@ -1,9 +1,26 @@
 # Repo to contain code relating to prompt based models for Mimic-III/Biomedical tasks
 
-The plan as it stands is to conduct a review of state of the art text classification NLP models such as BERT and GPT based models to a benchmark clinical dataset in MIMIC-III
-and later extend these to NHS datasets/Chronos.
+The plan as it stands is to conduct a review of state of the art text classification NLP models such as BERT and T5 based models to a benchmark clinical dataset in MIMIC-III and later extend these to NHS datasets/Chronos.
 
-For more detailed plans regarding this codebase - see issues, which are much easier to update and track than readme.
+We will be exploring the use of prompt-based learning as the new approach to tackling these downstream tasks. We will explore the zero shot, few shot and full fine tuning scenarios.
+
+
+## Mimic-III ICD9 diagnosis code classification 
+
+This is a multi-class classification problem where discharge summaries from ICU are used to classify the primary diagnosis code. Similar to the task here: https://github.com/simonlevine/clinical-longformer.
+
+We are going to go with this task of classifying the top 50 diagnoses are a start, but will also develop a novel "triage" oriented task with the same data by grouping the ICD9 codes into clinically similar disease groups i.e. treatment pathways. 
+
+### Data directory setup
+
+Data cannot be stored here, so access to the raw mimic-iii data will be required.
+
+![image](https://user-images.githubusercontent.com/49034323/151138574-05e97f18-b1c1-4a8f-808b-b8ebd0265148.png)
+
+
+### Formatting for icd9 top 50 classification
+
+... UPDATE
 
 
 # Setup of repo on local machine
