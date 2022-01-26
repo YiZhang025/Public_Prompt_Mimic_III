@@ -18,10 +18,42 @@ Data cannot be stored here, so access to the raw mimic-iii data will be required
 ![image](https://user-images.githubusercontent.com/49034323/151138574-05e97f18-b1c1-4a8f-808b-b8ebd0265148.png)
 
 
+The raw data is contained in the following: "./data/physionet.org/files/mimiciii/1.4/zipped_data/"
+
+
 ### Formatting for icd9 top 50 classification
 
-... UPDATE
+To create the training/valid/test splits for the top N icd9 diagnosis code and triage classification tasks first run the following scripts in order on the raw notes data. Perform following commands from the base dir of the repo.
 
+#### 1.)
+
+```
+python mimic-icd9-classification/preprocessing_scripts/format_notes.py
+```
+This will do some initial basic cleaning of the raw notes into appropriate dataframes for the different icd9 based classificaiton tasks. Compressed data will be saved alongside the original raw data as "NOTEEVENTS.FILTERED.csv.gz" by default
+
+#### 2.)
+
+```
+python mimic-icd9-classification/preprocessing_scripts/format_data_for_training.py
+```
+This will organise data into appropriate dataframes for the different icd9 based classificaiton tasks - either the topNicd9 classification, or triage tasks. Train/validate/test sets will be created containing all icd9_codes/data. Data will be saved at "./mimic-icd9-classification/data/intermediary_data/note2diagnosis-icd-{train/validate/test}.csv" 
+
+#### 3a - TopNicd9 classification 
+
+```
+python mimic-icd9-classification/preprocessing_scripts/format_mimic_topN_icd9.py
+```
+By default this will take the top 50 most frequent icd9 diagnosis codes as remove all other data (still contains the vast majority of the data) and place new train/validate/test splits inside the folder "/mimic-icd9-classification/data/intermediary_data/top_50_icd9/{train/validate/test}.csv"
+
+#### 3b - Triage icd9 classification
+
+```
+python mimic-icd9-classification/preprocessing_scripts/format_mimic_icd9_triage.py
+```
+This is a more experimental task where we have further split icd9 diagnosis codes into groupings that reflect their disease ontology and likely department/treatment pathways.
+
+By default this will take the top 20 most frequent icd9 diagnosis codes and group into new triage categories, as remove all other data (still contains the vast majority of the data) and place new train/validate/test splits inside the folder "/mimic-icd9-classification/data/intermediary_data/triage/{train/validate/test}.csv"
 
 # Setup of repo on local machine
 
