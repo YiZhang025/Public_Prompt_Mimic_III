@@ -28,7 +28,7 @@ Script to run different setups of prompt learning.
 Right now this is primarily set up for the mimic_top50_icd9 task, although it is quite flexible to other datasets. Any datasets need a corresponding processor class in utils.
 
 
-example usage. python prompt_experiment_runner.py --model bert --model_name_or_path bert-base-uncased --num_epochs 10 
+example usage. python prompt_experiment_runner.py --model bert --model_name_or_path bert-base-uncased --num_epochs 10 --tune_plm
 
 
 '''
@@ -39,7 +39,7 @@ parser = argparse.ArgumentParser("")
 parser.add_argument("--shot", type=int, default=-1)
 parser.add_argument("--seed", type=int, default=144)
 parser.add_argument("--plm_eval_mode", action="store_true", help="whether to turn off the dropout in the freezed model. Set to true to turn off.")
-parser.add_argument("--tune_plm", action="store_false")
+parser.add_argument("--tune_plm", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
 parser.add_argument("--project_root", default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/prompt-based-models", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
@@ -47,7 +47,7 @@ parser.add_argument("--template_id", type=int, default = 2)
 parser.add_argument("--verbalizer_id", type=int, default = 0)
 parser.add_argument("--template_type", type=str, default ="manual")
 parser.add_argument("--verbalizer_type", type=str, default ="soft")
-parser.add_argument("--data_dir", type=str, default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/clinical-longformer/data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
+parser.add_argument("--data_dir", type=str, default="/home/niallt/NLP_DPhil/DPhil_projects/mimic-icd9-classification/data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
 parser.add_argument("--dataset",type=str, default = "icd9_50")
 parser.add_argument("--result_file", type=str, default="./mimic_icd9_top50/st_results/results.txt")
 parser.add_argument("--scripts_path", type=str, default="./scripts/mimic_icd9_top50/")
@@ -101,10 +101,21 @@ version = f"version_{time_now}"
 
 plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_name_or_path)
 
-# set checkpoint, logs and results save_dirs
-ckpt_dir = f"{args.project_root}/checkpoints/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-logs_dir = f"{args.project_root}/logs/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-results_dir = f"{args.project_root}/results/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+# edit based on whether or not plm was frozen during training
+if args.tune_plm == True:
+    print("Unfreezing the plm - will be updated during training")
+    freeze_plm = False
+    # set checkpoint, logs and results save_dirs
+    ckpt_dir = f"{args.project_root}/checkpoints/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    logs_dir = f"{args.project_root}/logs/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    results_dir = f"{args.project_root}/results/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+else:
+    print("Freezing the plm")
+    freeze_plm = True
+    # set checkpoint, logs and results save_dirs
+    ckpt_dir = f"{args.project_root}/checkpoints/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    logs_dir = f"{args.project_root}/logs/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    results_dir = f"{args.project_root}/results/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 
 # check if the checkpoint and results dir exists  
 
@@ -178,9 +189,10 @@ print(wrapped_example)
 
 use_cuda = True
 #TODO rename tune_plm to freeze_plm... 
-tune_plm = not args.tune_plm
-print(f"tune_plm value: {tune_plm}")
-prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=(not args.tune_plm), plm_eval_mode=args.plm_eval_mode)
+
+
+print(f"tune_plm value: {args.tune_plm}")
+prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=freeze_plm, plm_eval_mode=args.plm_eval_mode)
 if use_cuda:
     prompt_model=  prompt_model.cuda()
 
@@ -231,6 +243,7 @@ else:
 
 # if using soft template
 if args.template_type == "soft":
+    print("Soft template used - will be fine tuning the prompt embeddings!")
     optimizer_grouped_parameters_template = [{'params': [p for name, p in prompt_model.template.named_parameters() if 'raw_embedding' not in name]}] # note that you have to remove the raw_embedding manually from the optimization
     if args.optimizer.lower() == "adafactor":
         optimizer_template = Adafactor(optimizer_grouped_parameters_template,  
@@ -251,6 +264,7 @@ elif args.template_type == "manual":
 
 
 if args.verbalizer_type == "soft":
+    print("Soft verbalizer used - will be fine tuning the verbalizer/answer embeddings!")
     optimizer_grouped_parameters_verb = [
     {'params': prompt_model.verbalizer.group_parameters_1, "lr":3e-5},
     {'params': prompt_model.verbalizer.group_parameters_2, "lr":3e-4},
@@ -280,6 +294,9 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
     best_val_f1 = 0
     best_val_prec = 0    
     best_val_recall = 0
+
+    # this will be set to true when max steps are reached
+    leave_training = False
 
     for epoch in tqdm(range(num_epochs)):
         print(f"On epoch: {epoch}")
