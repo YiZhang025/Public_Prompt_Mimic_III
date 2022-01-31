@@ -55,6 +55,17 @@ This is a more experimental task where we have further split icd9 diagnosis code
 
 By default this will take the top 20 most frequent icd9 diagnosis codes and group into new triage categories, as remove all other data (still contains the vast majority of the data) and place new train/validate/test splits inside the folder "/mimic-icd9-classification/data/intermediary_data/triage/{train/validate/test}.csv"
 
+
+# Experiments
+
+## standard finetuning for classification - e.g. bert/clinical-bert
+
+TODO
+
+## prompt based learning
+
+TODO
+
 # Setup of repo on local machine
 
 ## create virtual python environment 
