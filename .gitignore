@@ -6,6 +6,7 @@ artifacts/
 *.out
 *.txt
 *.z
+*.npy
 
 # C extensions
 *.so
@@ -149,3 +150,7 @@ pytorch-lightning-models/lightning_logs/*
 mimic-icd9-classification/prompt-based-models/logs/*
 mimic-icd9-classification/prompt-based-models/checkpoints/*
 mimic-icd9-classification/data/*
+mimic-icd9-classification/clinical-longformer/logs/*
+mimic-icd9-classification/clinical-longformer/ckpts/*
+mimic-icd9-classification/clinical-longformer/experiments/*
+
