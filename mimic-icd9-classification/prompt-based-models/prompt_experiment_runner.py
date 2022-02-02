@@ -30,6 +30,9 @@ Right now this is primarily set up for the mimic_top50_icd9 task, although it is
 
 example usage. python prompt_experiment_runner.py --model bert --model_name_or_path bert-base-uncased --num_epochs 10 --tune_plm
 
+other example usage:
+- python prompt_experiment_runner.py --model t5 --model_name_or_path razent/SciFive-base-Pubmed_PMC --num_epochs 10 --template_id 0 --template_type soft --max_steps 15000 --tune_plm
+
 
 '''
 
@@ -105,24 +108,24 @@ plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_nam
 if args.tune_plm == True:
     print("Unfreezing the plm - will be updated during training")
     freeze_plm = False
-    # set checkpoint, logs and results save_dirs
-    ckpt_dir = f"{args.project_root}/checkpoints/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    logs_dir = f"{args.project_root}/logs/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    results_dir = f"{args.project_root}/results/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    # set checkpoint, logs and params save_dirs
+    ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    logs_dir = f"{args.project_root}/logs/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    params_dir = f"{args.project_root}/params/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 else:
     print("Freezing the plm")
     freeze_plm = True
-    # set checkpoint, logs and results save_dirs
-    ckpt_dir = f"{args.project_root}/checkpoints/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    logs_dir = f"{args.project_root}/logs/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    results_dir = f"{args.project_root}/results/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    # set checkpoint, logs and params save_dirs
+    ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    logs_dir = f"{args.project_root}/logs/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    params_dir = f"{args.project_root}/params/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 
-# check if the checkpoint and results dir exists  
+# check if the checkpoint and params dir exists  
 
 if not os.path.exists(ckpt_dir):
     os.makedirs(ckpt_dir)
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
+if not os.path.exists(params_dir):
+    os.makedirs(params_dir)
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
@@ -154,9 +157,10 @@ if args.dataset == "icd9_50":
         batchsize_e = args.batch_size
         gradient_accumulation_steps = 4
         model_parallelize = False
+
 else:
 
-    #TODO implement mimic readmission
+    #TODO implement icd9 triage and mimic readmission
     raise NotImplementedError
 
 
@@ -427,7 +431,7 @@ train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
 
 print(content_write)
 
-with open(f"{results_dir}/results.txt", "a") as fout:
+with open(f"{params_dir}/params.txt", "a") as fout:
     fout.write(content_write)
 
 writer.flush()
