@@ -58,12 +58,46 @@ By default this will take the top 20 most frequent icd9 diagnosis codes and grou
 
 # Experiments
 
-## standard finetuning for classification - e.g. bert/clinical-bert
+## Top N ICD9 classification
+### standard finetuning for classification - e.g. bert/clinical-bert
 
+Using the clinical longformer pipeline is easiest at the moment. A training script is located in the "clinical_longformer/classifier_pipeline" directory. 
+
+To run training on the top50 icd9 classification task cd to the clinical longformer/classifier directory and run the following:
+
+#### Clinical_Biobert with no freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_50
+```
+
+#### Clinical_Biobert with freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_50
+```
+At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
+
+### prompt based learning
 TODO
 
-## prompt based learning
+## Triage ICD9 classification
+### standard finetuning for classification - e.g. bert/clinical-bert
 
+Using the clinical longformer pipeline is easiest at the moment. A training script is located in the "clinical_longformer/classifier_pipeline" directory. 
+
+To run training on the top50 icd9 classification task cd to the clinical longformer/classifier directory and run the following:
+
+#### Clinical_Biobert with no freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_triage
+```
+
+#### Clinical_Biobert with freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_triage
+```
+At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
+
+### prompt based learning
 TODO
 
 # Setup of repo on local machine
