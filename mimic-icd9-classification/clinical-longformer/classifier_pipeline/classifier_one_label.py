@@ -118,23 +118,55 @@ class Classifier(pl.LightningModule):
 
             self.transformer_type = self.hparams.transformer_type
 
+            self.dataset = self.hparams.dataset
+
 
              #TODO - include logic to select subset of icd9 codes
-            self.n_labels = 50
-            self.top_codes = pd.read_csv(self.hparams.train_csv)['ICD9_CODE'].value_counts()[:self.n_labels].index.tolist()
-            logger.warning(f'Classifying against the top {self.n_labels} most frequent ICD codes: {self.top_codes}')
-            
+             # we now have already subsetted training data to read in
 
-             # Label Encoder
-            if self.hparams.single_label_encoding == 'default':
+            # change logic based on the dataset name
+
+            if self.dataset == "icd9_50":
+                logger.info(f"Dataset probided was : icd9_50")
+
+                # set the data_dir based on dataset selected
+                self.data_dir = f"{self.hparams.data_dir}/top_50_icd9/"
+
+                self.n_labels = 50
+                self.top_codes = pd.read_csv(f"{self.data_dir}{self.hparams.train_csv}")['label'].value_counts()[:self.n_labels].sort_index().index.tolist()
+                logger.warning(f'Classifying against the top {self.n_labels} most frequent ICD codes: {self.top_codes}')
+                
+
+                # Label Encoder
+                if self.hparams.single_label_encoding == 'default':
+                    self.label_encoder = LabelEncoder(
+                        np.unique(self.top_codes).tolist(), 
+                        reserved_labels=[]
+                    )
+
+                self.label_encoder.unknown_index = None
+            
+            elif self.dataset == "icd9_triage":
+                logger.info(f"Dataset probided was : icd9_triage")
+                # set the data_dir based on dataset selected
+                self.data_dir = f"{self.hparams.data_dir}/triage/"
+
+                # get the triage label/classes
+                self.triage_labels = pd.read_csv(f"{self.data_dir}{self.hparams.train_csv}")['triage-category'].value_counts().sort_index().index.tolist()
+                # define label encoder based on these                  
                 self.label_encoder = LabelEncoder(
-                    np.unique(self.top_codes).tolist(), 
+                    np.unique(self.triage_labels).tolist(), 
                     reserved_labels=[]
                 )
 
-            self.label_encoder.unknown_index = None
+                self.label_encoder.unknown_index = None#
 
-        def get_mimic_data(self, path: str) -> list: #REWRITE
+            else:
+
+                #TODO implement mimic readmission
+                raise NotImplementedError
+
+        def get_mimic_data(self,path: str) -> list: #REWRITE
             """ Reads a comma separated value file.
 
             :param path: path to a csv file.
@@ -142,23 +174,44 @@ class Classifier(pl.LightningModule):
             :return: List of records as dictionaries
             """
         
-            df = pd.read_csv(path)
-            df = df[["TEXT", "ICD9_CODE"]]
-            df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'})           
+            # df = pd.read_csv(path)
+            # df = df[["TEXT", "ICD9_CODE"]]
+            # df = df.rename(columns={'TEXT':'text', 'ICD9_CODE':'label'})           
 
-            df = df[df['label'].isin(self.top_codes)]
-            df["text"] = df["text"].astype(str)
-            df["label"] = df["label"].astype(str)
+            # df = df[df['label'].isin(self.top_codes)]
+            # df["text"] = df["text"].astype(str)
+            # df["label"] = df["label"].astype(str)
 
-            df.to_csv(f'{path}_top_codes_filtered.csv')
+            # df.to_csv(f'{path}_top_codes_filtered.csv')
 
-            logger.warning(f'{path} dataframe has {len(df)} examples.' )
-            return df.to_dict("records")
+            
+            # for icd9_50 dataset
+            if self.dataset == "icd9_50":
+
+                df = pd.read_csv(path)
+                logger.warning(f'{path} dataframe has {len(df)} examples.' )
+                return df.to_dict("records")
+
+            elif self.dataset == "icd9_triage":
+                df = pd.read_csv(path)
+                df = df[["text", "triage-category"]]
+                df = df.rename(columns={'triage-category':'label'})          
+
+                
+                df["text"] = df["text"].astype(str)
+                df["label"] = df["label"].astype(str)
+                return df.to_dict("records")
+
+
+            else:
+
+                #TODO implement mimic readmission
+                raise NotImplementedError
 
         def train_dataloader(self) -> DataLoader:
             """ Function that loads the train set. """
             logger.warning('Loading training data...')
-            self._train_dataset = self.get_mimic_data(self.hparams.train_csv)
+            self._train_dataset = self.get_mimic_data(f"{self.data_dir}{self.hparams.train_csv}")
             return DataLoader(
                 dataset=self._train_dataset,
                 sampler=RandomSampler(self._train_dataset),
@@ -171,7 +224,7 @@ class Classifier(pl.LightningModule):
             logger.warning('Loading validation data...')
 
             """ Function that loads the validation set. """
-            self._dev_dataset = self.get_mimic_data(self.hparams.dev_csv)
+            self._dev_dataset = self.get_mimic_data(f"{self.data_dir}{self.hparams.dev_csv}")
             return DataLoader(
                 dataset=self._dev_dataset,
                 batch_size=self.hparams.batch_size,
@@ -183,7 +236,7 @@ class Classifier(pl.LightningModule):
             logger.warning('Loading testing data...')
 
             """ Function that loads the validation set. """
-            self._test_dataset = self.get_mimic_data(self.hparams.test_csv)
+            self._test_dataset = self.get_mimic_data(f"{self.data_dir}{self.hparams.test_csv}")
 
             return DataLoader(
                 dataset=self._test_dataset,
@@ -211,6 +264,7 @@ class Classifier(pl.LightningModule):
         self.__build_loss()
 
         if hparams.nr_frozen_epochs > 0:
+            logger.warning("Freezing the PLM i.e. the encoder - will just be tuning the classification head!")
             self.freeze_encoder()
         else:
             self._frozen = False
@@ -619,21 +673,36 @@ class Classifier(pl.LightningModule):
             type=int,
             help="Number of epochs we want to keep the encoder model frozen.",
         )
+
+        parser.add_argument(
+            "--data_dir",
+            default="../../data/intermediary-data/",
+            type=str,
+            help="name of dataset",
+        )
+
+        parser.add_argument(
+            "--dataset",
+            default="icd9_50", #or: icd9_triage
+            type=str,
+            help="name of dataset",
+        )
+
         parser.add_argument(
             "--train_csv",
-            default="data/intermediary-data/notes2diagnosis-icd-train.csv",
+            default="train.csv",
             type=str,
             help="Path to the file containing the train data.",
         )
         parser.add_argument(
             "--dev_csv",
-            default="data/intermediary-data/notes2diagnosis-icd-validate.csv",
+            default="valid.csv",
             type=str,
             help="Path to the file containing the dev data.",
         )
         parser.add_argument(
             "--test_csv",
-            default="data/intermediary-data/notes2diagnosis-icd-test.csv",
+            default="test.csv",
             type=str,
             help="Path to the file containing the dev data.",
         )

@@ -2,6 +2,7 @@
 Runs a model on a single node across N-gpus.
 """
 import argparse
+from gc import callbacks
 import os
 from datetime import datetime
 from pathlib import Path
@@ -35,12 +36,43 @@ def main(hparams) -> None:
 
     model = Classifier(hparams)
     
+    time_now = datetime.now().strftime("%d-%m-%Y--%H-%M-%S")
+    # set up the ckpt and logging dirs
+
+
+
+    # update ckpt and logs dir based on the dataset
+    
+    ckpt_dir = f"../ckpts/{hparams.dataset}/{hparams.encoder_model}/version_{time_now}"
+    log_dir = f"../logs/{hparams.dataset}/{hparams.encoder_model}/"
+
+    # update ckpt and logs dir based on whether plm (encoder) was frozen during training
+
+    if hparams.nr_frozen_epochs > 0:
+        logger.warning(f"Freezing the encoder/plm for {hparams.nr_frozen_epochs} epochs")
+        ckpt_dir = f"../ckpts/{hparams.dataset}/frozen_plm/{hparams.encoder_model}/version_{time_now}"
+        log_dir = f"../logs/{hparams.dataset}/frozen_plm/{hparams.encoder_model}/"
+
+    #setup checkpoint and logger
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=f"{ckpt_dir}",
+        filename="best-checkpoint",
+        save_top_k=1,
+        verbose=True,
+        monitor=hparams.monitor,
+        mode=hparams.metric_mode,
+        save_last = True
+    )
 
     tb_logger = TensorBoardLogger(
-        save_dir='experiments/',
-        version="version_" + datetime.now().strftime("%d-%m-%Y--%H-%M-%S"),
+        save_dir=f"{log_dir}",
+        version="version_" + time_now,
         name=f'{hparams.encoder_model}',
     )
+
+    # early stopping based on val loss
+    early_stopping_callback = EarlyStopping(monitor=hparams.monitor, mode = hparams.metric_mode, patience=4)
+
     # ------------------------
     # 5 INIT TRAINER
     # ------------------------
@@ -50,6 +82,8 @@ def main(hparams) -> None:
         log_gpu_memory="all",
         fast_dev_run=hparams.fast_dev_run,
         accumulate_grad_batches=hparams.accumulate_grad_batches,
+        checkpoint_callback = checkpoint_callback,
+        callbacks = [early_stopping_callback],
         max_epochs=hparams.max_epochs,
         default_root_dir=f'./classifier_pipeline/{hparams.encoder_model}',
         accelerator = hparams.accelerator
@@ -64,7 +98,7 @@ def main(hparams) -> None:
     trainer.test(model, model.data.test_dataloader())
 
     cms = np.array(model.test_conf_matrices)
-    np.save(f'experiments/{model.hparams.encoder_model}/test_confusion_matrices.npy',cms)
+    np.save(f'../experiments/{model.hparams.encoder_model}/test_confusion_matrices.npy',cms)
 
 
 if __name__ == "__main__":
@@ -86,7 +120,7 @@ if __name__ == "__main__":
 
     # Early Stopping
     parser.add_argument(
-        "--monitor", default="val_acc", type=str, help="Quantity to monitor."
+        "--monitor", default="val_acc_weighted", type=str, help="Quantity to monitor."
     )
 
     parser.add_argument(
