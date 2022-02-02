@@ -60,7 +60,20 @@ By default this will take the top 20 most frequent icd9 diagnosis codes and grou
 
 ## standard finetuning for classification - e.g. bert/clinical-bert
 
-TODO
+Using the clinical longformer pipeline is easiest at the moment. A training script is located in the "clinical_longformer/classifier_pipeline" directory. 
+
+To run training on the top50 icd9 classification task cd to the clinical longformer/classifier directory and run the following:
+
+## Clinical_Biobert with no freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10
+```
+
+## Clinical_Biobert with freezing of PLM
+```
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10
+```
+At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
 
 ## prompt based learning
 
