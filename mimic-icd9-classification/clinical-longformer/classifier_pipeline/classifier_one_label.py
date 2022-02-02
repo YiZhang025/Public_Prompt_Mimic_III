@@ -422,7 +422,9 @@ class Classifier(pl.LightningModule):
         sum_mask = mask.unsqueeze(-1).expand(word_embeddings.size()).float().sum(1)
         sentemb = sentemb / sum_mask
 
-        return {"logits": self.classification_head(sentemb)}
+        # return both the logits and the sentence embeddings - we want to play with these later
+
+        return {"logits": self.classification_head(sentemb), "sent_embs": sentemb}
 
     def loss(self, predictions: dict, targets: dict) -> torch.tensor:
         """
