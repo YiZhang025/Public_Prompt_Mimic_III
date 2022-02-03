@@ -8,7 +8,7 @@ import numpy as np
 from openprompt import PromptDataLoader
 from openprompt.prompts import ManualVerbalizer, ManualTemplate, SoftVerbalizer
 
-from openprompt.prompts import SoftTemplate
+from openprompt.prompts import SoftTemplate, MixedTemplate
 from openprompt import PromptForClassification
 
 from utils import Mimic_ICD9_Processor as MimicProcessor
@@ -178,6 +178,10 @@ elif args.template_type == "soft":
     print(f"soft template selected, with id :{args.template_id}")
     mytemplate = SoftTemplate(model=plm, tokenizer=tokenizer, num_tokens=args.soft_token_num, initialize_from_vocab=args.init_from_vocab).from_file(f"{scriptsbase}/soft_template.txt", choice=args.template_id)
 
+
+elif args.template_type == "mixed":
+    print(f"mixed template selected, with id :{args.template_id}")
+    mytemplate = MixedTemplate(model=plm, tokenizer=tokenizer).from_file(f"{scriptsbase}/mixed_template.txt", choice=args.template_id)
 # now set verbalizer
 if args.verbalizer_type == "manual":
     print(f"manual verbalizer selected, with id :{args.verbalizer_id}")
@@ -192,7 +196,6 @@ print(wrapped_example)
 
 
 use_cuda = True
-#TODO rename tune_plm to freeze_plm... 
 
 
 print(f"tune_plm value: {args.tune_plm}")

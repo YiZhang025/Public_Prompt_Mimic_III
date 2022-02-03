@@ -59,7 +59,7 @@ class Mimic_ICD9_Processor(DataProcessor):
         
         for idx, row in tqdm(df.iterrows()):
 #             print(row)
-            _, body, label = row
+            body, label = row['text'],row['label']
             label = self.label_encoder.encode(label)
 #             print(f"body : {body}")
 #             print(f"label: {label}")
