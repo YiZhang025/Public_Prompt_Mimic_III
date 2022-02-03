@@ -249,8 +249,8 @@ else:
     scheduler_plm = None
 
 # if using soft template
-if args.template_type == "soft":
-    print("Soft template used - will be fine tuning the prompt embeddings!")
+if args.template_type == "soft" or args.template_type == "mixed":
+    print(f"{args.template_type} template used - will be fine tuning the prompt embeddings!")
     optimizer_grouped_parameters_template = [{'params': [p for name, p in prompt_model.template.named_parameters() if 'raw_embedding' not in name]}] # note that you have to remove the raw_embedding manually from the optimization
     if args.optimizer.lower() == "adafactor":
         optimizer_template = Adafactor(optimizer_grouped_parameters_template,  
