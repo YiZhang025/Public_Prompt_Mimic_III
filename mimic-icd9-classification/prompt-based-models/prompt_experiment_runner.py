@@ -43,6 +43,7 @@ parser.add_argument("--shot", type=int, default=-1)
 parser.add_argument("--seed", type=int, default=144)
 parser.add_argument("--plm_eval_mode", action="store_true", help="whether to turn off the dropout in the freezed model. Set to true to turn off.")
 parser.add_argument("--tune_plm", action="store_true")
+parser.add_argument("--zero_shot", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
 parser.add_argument("--project_root", default="./", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
@@ -425,6 +426,13 @@ def evaluate(prompt_model, dataloader, mode = "validation"):
     
     return acc, prec, recall, f1
 
+if args.run_zero_shot:
+    logger.info("Obtaining zero shot performance on test set!")
+    zero_acc, zero_prec, zero_recall, zero_f1 = evaluate(prompt_model, test_dataloader, mode = "test")
+    writer.add_scalar("zero_shot/accuracy", zero_acc, 0)
+    writer.add_scalar("zero_shot/precision", zero_prec, 0)
+    writer.add_scalar("zero_shot/recall", zero_recall, 0)
+    writer.add_scalar("zero_shot/f1", zero_f1, 0)
 
 # run training
 
