@@ -10,8 +10,10 @@ from openprompt.prompts import ManualVerbalizer, ManualTemplate, SoftVerbalizer
 
 from openprompt.prompts import SoftTemplate, MixedTemplate
 from openprompt import PromptForClassification
+# from openprompt.utils.logging import logger
+from loguru import logger
 
-from utils import Mimic_ICD9_Processor as MimicProcessor
+from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor
 import time
 import os
 from datetime import datetime
@@ -51,10 +53,10 @@ parser.add_argument("--template_id", type=int, default = 2)
 parser.add_argument("--verbalizer_id", type=int, default = 0)
 parser.add_argument("--template_type", type=str, default ="manual")
 parser.add_argument("--verbalizer_type", type=str, default ="soft")
-parser.add_argument("--data_dir", type=str, default="../data/intermediary-data/top_50_icd9") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
-parser.add_argument("--dataset",type=str, default = "icd9_50")
+parser.add_argument("--data_dir", type=str, default="../data/intermediary-data/") # sometimes, huggingface datasets can not be automatically downloaded due to network issue, please refer to 0_basic.py line 15 for solutions. 
+parser.add_argument("--dataset",type=str, default = "icd9_50") # or "icd9_triage"
 parser.add_argument("--result_file", type=str, default="./mimic_icd9_top50/st_results/results.txt")
-parser.add_argument("--scripts_path", type=str, default="./scripts/mimic_icd9_top50/")
+parser.add_argument("--scripts_path", type=str, default="./scripts/")
 parser.add_argument("--class_labels_file", type=str, default="./scripts/mimic_icd9_top50/labels.txt")
 parser.add_argument("--max_steps", default=15000, type=int)
 parser.add_argument("--prompt_lr", type=float, default=0.3)
@@ -72,6 +74,7 @@ args = parser.parse_args()
 # write arguments to a txt file to go with the model checkpoint and logs
 content_write = "="*20+"\n"
 content_write += f"dataset {args.dataset}\t"
+content_write += f"tune_plm {args.tune_plm}\t"
 content_write += f"temp {args.template_id}\t"
 content_write += f"verb {args.verbalizer_id}\t"
 content_write += f"model {args.model}\t"
@@ -86,7 +89,7 @@ content_write += f"warmup_step_prompt {args.warmup_step_prompt}\t"
 content_write += f"soft_token_num {args.soft_token_num}\t"
 content_write += "\n"
 
-print(content_write)
+logger.info(content_write)
 
 import random
 
@@ -107,14 +110,14 @@ plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_nam
 
 # edit based on whether or not plm was frozen during training
 if args.tune_plm == True:
-    print("Unfreezing the plm - will be updated during training")
+    logger.warning("Unfreezing the plm - will be updated during training")
     freeze_plm = False
     # set checkpoint, logs and params save_dirs
     ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
     logs_dir = f"{args.project_root}/logs/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
     params_dir = f"{args.project_root}/params/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 else:
-    print("Freezing the plm")
+    logger.warning("Freezing the plm")
     freeze_plm = True
     # set checkpoint, logs and params save_dirs
     ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
@@ -135,17 +138,21 @@ dataset = {}
 
 # Below are multiple dataset examples, although right now just mimic ic9-top50. 
 if args.dataset == "icd9_50":
-    Processor = MimicProcessor
+    logger.warning(f"Using the following dataset: {args.dataset} ")
+    Processor = Mimic_ICD9_Processor
+    # update data_dir
+    data_dir = f"{args.data_dir}/top_50_icd9"
+
     # get different splits
-    dataset['train'] = Processor().get_examples(data_dir = args.data_dir, mode = "train")
-    dataset['validation'] = Processor().get_examples(data_dir = args.data_dir, mode = "valid")
-    dataset['test'] = Processor().get_examples(data_dir = args.data_dir, mode = "test")
+    dataset['train'] = Processor().get_examples(data_dir = data_dir, mode = "train")
+    dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid")
+    dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test")
     # the below class labels should align with the label encoder fitted to training data
     # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
     # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
-    class_labels =Processor().load_class_labels(file_path = args.class_labels_file)
+    class_labels =Processor().load_class_labels()
     print(f"number of classes: {len(class_labels)}")
-    scriptsbase = args.scripts_path
+    scriptsbase = f"{args.scripts_path}/mimic_icd9_top50/"
     scriptformat = "txt"
     max_seq_l = 480 # this should be specified according to the running GPU's capacity 
     if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
@@ -159,8 +166,35 @@ if args.dataset == "icd9_50":
         gradient_accumulation_steps = 4
         model_parallelize = False
 
-else:
+elif args.dataset == "icd9_triage":
+    logger.warning(f"Using the following dataset: {args.dataset} ")
+    Processor = Mimic_ICD9_Triage_Processor
+    # update data_dir
+    data_dir = f"{args.data_dir}/triage"
 
+    # get different splits
+    dataset['train'] = Processor().get_examples(data_dir = data_dir, mode = "train")
+    dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid")
+    dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test")
+    # the below class labels should align with the label encoder fitted to training data
+    # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
+    # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
+    class_labels =Processor().load_class_labels()
+    print(f"number of classes: {len(class_labels)}")
+    scriptsbase = f"{args.scripts_path}/mimic_triage/"
+    scriptformat = "txt"
+    max_seq_l = 480 # this should be specified according to the running GPU's capacity 
+    if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
+        batchsize_t = args.batch_size 
+        batchsize_e = args.batch_size
+        gradient_accumulation_steps = 4
+        model_parallelize = False # if multiple gpus are available, one can use model_parallelize
+    else:
+        batchsize_t = args.batch_size
+        batchsize_e = args.batch_size
+        gradient_accumulation_steps = 4
+        model_parallelize = False
+else:
     #TODO implement icd9 triage and mimic readmission
     raise NotImplementedError
 
@@ -234,7 +268,7 @@ tot_step = args.max_steps
 
 if args.tune_plm:
     
-    print("We will be tuning the PLM!") # normally we freeze the model when using soft_template. However, we keep the option to tune plm
+    logger.warning("We will be tuning the PLM!") # normally we freeze the model when using soft_template. However, we keep the option to tune plm
     no_decay = ['bias', 'LayerNorm.weight'] # it's always good practice to set no decay to biase and LayerNorm parameters
     optimizer_grouped_parameters_plm = [
         {'params': [p for n, p in prompt_model.plm.named_parameters() if (not any(nd in n for nd in no_decay))], 'weight_decay': 0.01},
@@ -245,7 +279,7 @@ if args.tune_plm:
         optimizer_plm, 
         num_warmup_steps=100, num_training_steps=tot_step)
 else:
-    print("We will not be tunning the plm - i.e. the PLM layers are frozen during training")
+    logger.warning("We will not be tunning the plm - i.e. the PLM layers are frozen during training")
     optimizer_plm = None
     scheduler_plm = None
 
@@ -377,7 +411,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
 
         # save checkpoint if validation accuracy improved
         if val_acc >= best_val_acc:
-            print("Accuracy improved! Saving checkpoint!")
+            logger.warning("Accuracy improved! Saving checkpoint!")
             torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint.ckpt")
             best_val_acc = val_acc
 
@@ -387,7 +421,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             break
     
         if leave_training:
-            print("Leaving training as max steps have been met!")
+            logger.warning("Leaving training as max steps have been met!")
             break 
 
    
@@ -426,7 +460,9 @@ def evaluate(prompt_model, dataloader, mode = "validation"):
     
     return acc, prec, recall, f1
 
-if args.run_zero_shot:
+
+# if refactor this has to be run before any training has occured
+if args.zero_shot:
     logger.info("Obtaining zero shot performance on test set!")
     zero_acc, zero_prec, zero_recall, zero_f1 = evaluate(prompt_model, test_dataloader, mode = "test")
     writer.add_scalar("zero_shot/accuracy", zero_acc, 0)

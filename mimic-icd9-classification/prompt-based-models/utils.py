@@ -81,10 +81,12 @@ class Mimic_ICD9_Processor(DataProcessor):
 
             textfile = open(f"{class_labels_save_dir}/labels.txt", "w")
 
-            for element in class_labels:
+            # write each label to a file separated by new line, but do not add new line to last entry as this will create an empty "" label
+            for element in class_labels[:-1]:
 
                 textfile.write(element + "\n")
-
+            # now write the last item to the file
+            textfile.write(class_labels[-1])
             textfile.close() 
 
         return examples
