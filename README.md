@@ -110,12 +110,12 @@ To run training on the top50 icd9 classification task cd to the clinical longfor
 
 #### Clinical_Biobert with no freezing of PLM
 ```
-python training_onelabel.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_triage
+python training_onelabel.py --transformer_type bert --encoder_model emilyalsentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_triage
 ```
 
 #### Clinical_Biobert with freezing of PLM
 ```
-python training_onelabel.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_triage
+python training_onelabel.py --transformer_type bert --encoder_model emilyalsentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_triage
 ```
 At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
 
