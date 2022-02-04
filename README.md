@@ -120,7 +120,26 @@ python training_one_label.py --transformer_type bert --encoder_model emilysentze
 At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
 
 ### prompt based learning
+#### Clinical_BioBert with finetuning plm
+##### manual template and verbalizer
 TODO
+#### manual template and soft verbalizer
+TODO
+#### soft template and soft verbalizer
+TODO
+#### mixed template and soft verbalizer
+
+#### Clinical_BioBert with plm freezing 
+##### manual template and verbalizer
+TODO
+#### manual template and soft verbalizer
+TODO
+#### soft template and soft verbalizer
+TODO
+#### mixed template and soft verbalizer
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --zero_shot --dataset icd9_triage
+```
 
 # Setup of repo on local machine
 
