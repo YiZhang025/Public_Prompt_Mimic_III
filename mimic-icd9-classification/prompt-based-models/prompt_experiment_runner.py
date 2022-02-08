@@ -299,7 +299,7 @@ else:
 
 # if using soft template
 if args.template_type == "soft" or args.template_type == "mixed":
-    print(f"{args.template_type} template used - will be fine tuning the prompt embeddings!")
+    logger.warning(f"{args.template_type} template used - will be fine tuning the prompt embeddings!")
     optimizer_grouped_parameters_template = [{'params': [p for name, p in prompt_model.template.named_parameters() if 'raw_embedding' not in name]}] # note that you have to remove the raw_embedding manually from the optimization
     if args.optimizer.lower() == "adafactor":
         optimizer_template = Adafactor(optimizer_grouped_parameters_template,  
@@ -320,7 +320,7 @@ elif args.template_type == "manual":
 
 
 if args.verbalizer_type == "soft":
-    print("Soft verbalizer used - will be fine tuning the verbalizer/answer embeddings!")
+    logger.warning("Soft verbalizer used - will be fine tuning the verbalizer/answer embeddings!")
     optimizer_grouped_parameters_verb = [
     {'params': prompt_model.verbalizer.group_parameters_1, "lr":3e-5},
     {'params': prompt_model.verbalizer.group_parameters_2, "lr":3e-4},
