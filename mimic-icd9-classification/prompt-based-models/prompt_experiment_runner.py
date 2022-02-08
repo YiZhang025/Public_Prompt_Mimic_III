@@ -4,6 +4,8 @@ import torch
 from openprompt.data_utils.utils import InputExample
 import argparse
 import numpy as np
+import pandas as pd
+import seaborn as sn
 
 from openprompt import PromptDataLoader
 from openprompt.prompts import ManualVerbalizer, ManualTemplate, SoftVerbalizer
@@ -22,6 +24,11 @@ from torch.utils.tensorboard import SummaryWriter
 import torchmetrics.functional.classification as metrics
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
 
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
+
+import json
+import itertools
 
 
 '''
@@ -70,6 +77,7 @@ parser.add_argument("--optimizer", type=str, default="Adafactor")
 
 # instatiate args and set to variable
 args = parser.parse_args()
+
 
 # write arguments to a txt file to go with the model checkpoint and logs
 content_write = "="*20+"\n"
@@ -130,6 +138,12 @@ if not os.path.exists(ckpt_dir):
     os.makedirs(ckpt_dir)
 if not os.path.exists(params_dir):
     os.makedirs(params_dir)
+
+
+
+# lets write these arguments to file for later loading alongside the trained models
+with open(f'{params_dir}/commandline_args.txt', 'w') as f:
+    json.dump(args.__dict__, f, indent=2)
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
@@ -402,12 +416,15 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
 
         # run a run through validation set to get some metrics        
-        val_acc, val_prec, val_recall, val_f1 = evaluate(prompt_model, validation_dataloader)
+        val_acc, val_prec, val_recall, val_f1, cm_figure = evaluate(prompt_model, validation_dataloader)
 
         writer.add_scalar("valid/accuracy", val_acc, epoch)
         writer.add_scalar("valid/precision", val_prec, epoch)
         writer.add_scalar("valid/recall", val_recall, epoch)
         writer.add_scalar("valid/f1", val_f1, epoch)
+
+        # add cm to tensorboard
+        writer.add_figure("valid/Confusion_Matrix", cm_figure, epoch)
 
         # save checkpoint if validation accuracy improved
         if val_acc >= best_val_acc:
@@ -430,7 +447,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
 
 # %%
 
-def evaluate(prompt_model, dataloader, mode = "validation"):
+def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class_labels):
     prompt_model.eval()
 
     allpreds = []
@@ -457,18 +474,93 @@ def evaluate(prompt_model, dataloader, mode = "validation"):
     f1 = f1_score(alllabels, allpreds, average = 'weighted')
     prec = precision_score(alllabels, allpreds, average = 'weighted')
     recall = recall_score(alllabels, allpreds, average = 'weighted')   
+
+    # get confusion matrix
+    cm = confusion_matrix(alllabels, allpreds)
+
+    # plot using custom function defined below
+    # cm_figure = plotConfusionMatrix(cm, class_labels)
+    # below makes a slightly nicer plot 
+    cm_figure = plot_confusion_matrix(cm, class_labels)
+
     
-    return acc, prec, recall, f1
+    return acc, prec, recall, f1, cm_figure
+
+
+# def plotConfusionMatrix(cm, classes, annot = True):
+
+#     '''
+#     Function to plot and save a confusion matrix
+#     '''
+#     cf_matrix = cm
+#     df_cm = pd.DataFrame(cf_matrix/np.sum(cf_matrix) * 10, index=[i for i in classes],
+#                          columns=[i for i in classes])
+#     plt.figure(figsize=(16, 10))
+#     plt.tight_layout()
+#     plt.ylabel('True label')
+#     plt.xlabel('Predicted label')
+    
+#     return sn.heatmap(df_cm, annot=annot, cmap = "Blues").get_figure()
+
+# nicer plot
+def plot_confusion_matrix(cm, class_names):
+    """
+    Returns a matplotlib figure containing the plotted confusion matrix.
+    
+    Args:
+       cm (array, shape = [n, n]): a confusion matrix of integer classes
+       class_names (array, shape = [n]): String names of the integer classes
+
+    credit: https://towardsdatascience.com/exploring-confusion-matrix-evolution-on-tensorboard-e66b39f4ac12
+    """
+
+   
+    font = FontProperties()
+    font.set_family('serif')
+    font.set_name('Times New Roman')
+    font.set_style('normal')
+
+    figure = plt.figure(figsize=(8, 8))
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title(f"Confusion matrix: {args.dataset}")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    
+    # Normalize the confusion matrix.
+    cm = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    
+    # Use white text if squares are dark; otherwise black.
+    threshold = cm.max() / 2.
+    
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        color = "white" if cm[i, j] > threshold else "black"
+        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+        
+    plt.tight_layout()
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    # figure.savefig(f'experiments/{model}/test_mtx.png')
+
+    return figure
 
 
 # if refactor this has to be run before any training has occured
 if args.zero_shot:
     logger.info("Obtaining zero shot performance on test set!")
-    zero_acc, zero_prec, zero_recall, zero_f1 = evaluate(prompt_model, test_dataloader, mode = "test")
+    zero_acc, zero_prec, zero_recall, zero_f1, zero_cm_figure = evaluate(prompt_model, test_dataloader, mode = "test")
     writer.add_scalar("zero_shot/accuracy", zero_acc, 0)
     writer.add_scalar("zero_shot/precision", zero_prec, 0)
     writer.add_scalar("zero_shot/recall", zero_recall, 0)
     writer.add_scalar("zero_shot/f1", zero_f1, 0)
+    # add cm to tensorboard
+    writer.add_figure("zero/Confusion_Matrix", zero_cm_figure, 0)
+
+
+
+
 
 # run training
 
