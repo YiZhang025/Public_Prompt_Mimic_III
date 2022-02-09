@@ -53,6 +53,7 @@ parser.add_argument("--seed", type=int, default=144)
 parser.add_argument("--plm_eval_mode", action="store_true", help="whether to turn off the dropout in the freezed model. Set to true to turn off.")
 parser.add_argument("--tune_plm", action="store_true")
 parser.add_argument("--zero_shot", action="store_true")
+parser.add_argument("--no_training", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
 parser.add_argument("--project_root", default="./", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
@@ -113,6 +114,7 @@ from openprompt.plms import load_plm
 # set up some variables to add to checkpoint and logs filenames
 time_now = str(datetime.now().strftime("%d-%m-%Y--%H-%M"))
 version = f"version_{time_now}"
+
 
 plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_name_or_path)
 
@@ -555,13 +557,13 @@ if args.zero_shot:
     # add cm to tensorboard
     writer.add_figure("zero/Confusion_Matrix", zero_cm_figure, 0)
 
-
-
-
-
 # run training
 
-train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
+do_training = (not args.no_training)
+logger.warning(f"do training : {do_training}")
+if do_training:
+    logger.warning("Beginning full training!")
+    train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
 
 # write the contents to file
 
