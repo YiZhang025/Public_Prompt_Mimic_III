@@ -123,26 +123,23 @@ if args.tune_plm == True:
     # set checkpoint, logs and params save_dirs
     ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
     logs_dir = f"{args.project_root}/logs/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    params_dir = f"{args.project_root}/params/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 else:
     logger.warning("Freezing the plm")
     freeze_plm = True
     # set checkpoint, logs and params save_dirs
     ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
     logs_dir = f"{args.project_root}/logs/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
-    params_dir = f"{args.project_root}/params/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
 
 # check if the checkpoint and params dir exists  
 
 if not os.path.exists(ckpt_dir):
     os.makedirs(ckpt_dir)
-if not os.path.exists(params_dir):
-    os.makedirs(params_dir)
+
 
 
 
 # lets write these arguments to file for later loading alongside the trained models
-with open(f'{params_dir}/commandline_args.txt', 'w') as f:
+with open(f'{ckpt_dir}/commandline_args.txt', 'w') as f:
     json.dump(args.__dict__, f, indent=2)
 
 # set up tensorboard logger
@@ -429,7 +426,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         # save checkpoint if validation accuracy improved
         if val_acc >= best_val_acc:
             logger.warning("Accuracy improved! Saving checkpoint!")
-            torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint.ckpt")
+            torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint_{epoch}.ckpt")
             best_val_acc = val_acc
 
 
@@ -533,7 +530,7 @@ def plot_confusion_matrix(cm, class_names):
     cm = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     
     # Use white text if squares are dark; otherwise black.
-    threshold = cm.max() / 2.
+    threshold = cm.max() * 0.95
     
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if cm[i, j] > threshold else "black"
@@ -569,9 +566,6 @@ train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
 # write the contents to file
 
 print(content_write)
-
-with open(f"{params_dir}/params.txt", "a") as fout:
-    fout.write(content_write)
 
 writer.flush()
 
