@@ -428,7 +428,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         # save checkpoint if validation accuracy improved
         if val_acc >= best_val_acc:
             logger.warning("Accuracy improved! Saving checkpoint!")
-            torch.save(prompt_model.state_dict(),f"{ckpt_dir}/checkpoint_{epoch}.ckpt")
+            torch.save(prompt_model.state_dict(),f"{ckpt_dir}/best-checkpoint.ckpt")
             best_val_acc = val_acc
 
 
