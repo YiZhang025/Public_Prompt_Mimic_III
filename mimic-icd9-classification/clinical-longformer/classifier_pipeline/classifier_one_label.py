@@ -26,6 +26,7 @@ import torchmetrics.functional.classification as metrics
 # import pytorch_lightning.metrics.functional.classification as old_metrics
 
 from sklearn import metrics as skmetrics
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
 
 from loguru import logger
 
@@ -34,7 +35,7 @@ from matplotlib.font_manager import FontProperties
 
 
 
-def plot_confusion_matrix(cm, class_names, model):
+def plot_confusion_matrix(cm, class_names):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
     
@@ -45,7 +46,7 @@ def plot_confusion_matrix(cm, class_names, model):
     credit: https://towardsdatascience.com/exploring-confusion-matrix-evolution-on-tensorboard-e66b39f4ac12
     """
 
-    cm = cm.cpu().detach().numpy() 
+    
     font = FontProperties()
     font.set_family('serif')
     font.set_name('Times New Roman')
@@ -53,7 +54,7 @@ def plot_confusion_matrix(cm, class_names, model):
 
     figure = plt.figure(figsize=(8, 8))
     plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
+    
     plt.colorbar()
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=45)
@@ -64,7 +65,7 @@ def plot_confusion_matrix(cm, class_names, model):
     cm = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     
     # Use white text if squares are dark; otherwise black.
-    threshold = cm.max() / 2.
+    threshold = cm.max() * 0.95
     
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if cm[i, j] > threshold else "black"
@@ -73,7 +74,9 @@ def plot_confusion_matrix(cm, class_names, model):
     plt.tight_layout()
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
-    figure.savefig(f'experiments/{model}/test_mtx.png')
+    # figure.savefig(f'experiments/{model}/test_mtx.png')
+
+    return figure
 
 
 
@@ -195,9 +198,7 @@ class Classifier(pl.LightningModule):
             elif self.dataset == "icd9_triage":
                 df = pd.read_csv(path)
                 df = df[["text", "triage-category"]]
-                df = df.rename(columns={'triage-category':'label'})          
-
-                
+                df = df.rename(columns={'triage-category':'label'})        
                 df["text"] = df["text"].astype(str)
                 df["label"] = df["label"].astype(str)
                 return df.to_dict("records")
@@ -256,6 +257,9 @@ class Classifier(pl.LightningModule):
 
         # Build Data module
         self.data = self.DataModule(self)
+
+        # get original class labels
+        self.class_labels = list(self.data.label_encoder.tokens.keys())
         
         # build model
         self.__build_model()
@@ -523,18 +527,29 @@ class Classifier(pl.LightningModule):
         # recall = metrics.recall(labels_hat,y,  class_reduction='weighted')
         # acc = metrics.accuracy(labels_hat,y,   class_reduction='weighted')
 
-        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = 50)
-        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = 50)
-        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = 50)
-        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = 50)
+        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
 
         self.log('test_batch_prec',prec)
         self.log('test_batch_f1',f1)
         self.log('test_batch_recall',recall)
         self.log('test_batch_weighted_acc', acc)
 
-        cm = metrics.confusion_matrix(preds = labels_hat,target=y, num_classes =50)
-        self.test_conf_matrices.append(cm)
+        # # get class labels
+        # class_labels = self.class_labels
+
+        # # get confusion matrix
+        # cm = confusion_matrix(y.cpu().tolist(),labels_hat.cpu().tolist(), labels = list(self.data.label_encoder.token_to_index.values()))
+
+        # # make plot 
+        # cm_figure = plot_confusion_matrix(cm, class_labels)
+
+        # # log to tensorboard
+        # self.logger.experiment.add_figure("test/confusion_matrix", cm_figure, self.current_epoch)
+
+        # self.test_conf_matrices.append(cm)
 
 
     def validation_step(self, batch: tuple, batch_nb: int, *args, **kwargs) -> dict:
@@ -576,10 +591,10 @@ class Classifier(pl.LightningModule):
         
         self.log('val_loss',loss_val,prog_bar=True)
 
-        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = 50)
-        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = 50)
-        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = 50)
-        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = 50)
+        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
 
         # print(f"f1 from torch metrics is: ", f1)
         # print(f"f1 from pytorch metrics is : { old_metrics.f1_score(labels_hat,y,    class_reduction='weighted')}")
@@ -587,14 +602,51 @@ class Classifier(pl.LightningModule):
         # logger.info("val_prec at moment is: ",prec)
         # logger.info("val_f1 at moment is: ",f1)
 
-        self.log('val_prec',prec)
-        self.log('val_f1',f1)
-        self.log('val_recall',recall)
-        self.log('val_acc_weighted', acc,prog_bar=True)
+        self.log('valid/prec',prec)
+        self.log('valid/f1',f1)
+        self.log('valid/recall',recall)
+        self.log('valid/acc_weighted', acc,prog_bar=True)
 
+        return {"loss": loss_val, "predictions": model_out["logits"], "labels": y}
+
+    def validation_epoch_end(self, outputs):
         
-        # self.log('val_cm',cm)
+        labels = []
+        predictions = []
+        for output in outputs:
+            
+            for out_labels in output["labels"].to('cpu').detach().numpy():                                
+                labels.append(out_labels)
+            for out_predictions in output["predictions"].to('cpu').detach().numpy():                               
+                predictions.append(np.argmax(out_predictions, axis = -1))
+
+
+        acc = sum([int(i==j) for i,j in zip(predictions, labels)])/len(predictions)
+        print(f"accuracy using manual method: {acc}")
+
+        # below is torch metrics but needs to still be tensors
+        # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+        # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
+        # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+        # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
         
+        # get sklearn based metrics
+        f1 = f1_score(labels, predictions, average = 'weighted')
+        prec = precision_score(labels, predictions, average = 'weighted')
+        recall = recall_score(labels, predictions, average = 'weighted')    
+
+        # get class labels
+        class_labels = self.class_labels
+
+        # get confusion matrix
+        cm = confusion_matrix(labels,predictions, labels = list(self.data.label_encoder.token_to_index.values()))
+
+        # make plot 
+        cm_figure = plot_confusion_matrix(cm, class_labels)
+
+        # log to tensorboard
+        self.logger.experiment.add_figure("valid/confusion_matrix", cm_figure, self.current_epoch)
+
 
     def configure_optimizers(self):
         """ Sets different Learning rates for different parameter groups. """

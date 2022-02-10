@@ -44,14 +44,14 @@ def main(hparams) -> None:
     # update ckpt and logs dir based on the dataset
     
     ckpt_dir = f"../ckpts/{hparams.dataset}/{hparams.encoder_model}/version_{time_now}"
-    log_dir = f"../logs/{hparams.dataset}/{hparams.encoder_model}/"
+    log_dir = f"../logs/{hparams.dataset}/"
 
     # update ckpt and logs dir based on whether plm (encoder) was frozen during training
 
     if hparams.nr_frozen_epochs > 0:
         logger.warning(f"Freezing the encoder/plm for {hparams.nr_frozen_epochs} epochs")
         ckpt_dir = f"../ckpts/{hparams.dataset}/frozen_plm/{hparams.encoder_model}/version_{time_now}"
-        log_dir = f"../logs/{hparams.dataset}/frozen_plm/{hparams.encoder_model}/"
+        log_dir = f"../logs/{hparams.dataset}/frozen_plm/"
 
     #setup checkpoint and logger
     checkpoint_callback = ModelCheckpoint(
@@ -120,7 +120,7 @@ if __name__ == "__main__":
 
     # Early Stopping
     parser.add_argument(
-        "--monitor", default="val_acc_weighted", type=str, help="Quantity to monitor."
+        "--monitor", default="valid/acc_weighted", type=str, help="Quantity to monitor."
     )
 
     parser.add_argument(
