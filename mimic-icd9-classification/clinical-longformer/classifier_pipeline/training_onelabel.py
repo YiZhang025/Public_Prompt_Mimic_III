@@ -148,6 +148,20 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--max_steps",
+        default=20000,
+        type=int,
+        help="Limits number of steps i.e. number of gradient backward passes/optimizer updates",
+    )
+
+    parser.add_argument(
+        "--n_warmup_steps",
+        default=300,
+        type=int,
+        help="Warmup steps before learning rate scheduler begins",
+    )
+
+    parser.add_argument(
         '--fast_dev_run',
         default=False,
         type=bool,

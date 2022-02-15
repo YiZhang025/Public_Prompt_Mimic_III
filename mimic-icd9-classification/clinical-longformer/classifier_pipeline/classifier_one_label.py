@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader, RandomSampler
-from transformers import AutoModel,RobertaForMaskedLM
+from transformers import AutoModel,RobertaForMaskedLM, get_linear_schedule_with_warmup
 from transformers.models.longformer.modeling_longformer import LongformerSelfAttention
 
 import pytorch_lightning as pl
@@ -658,11 +658,25 @@ class Classifier(pl.LightningModule):
             },
         ]
         optimizer = optim.Adam(parameters, lr=self.hparams.learning_rate)
-        return [optimizer], []
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self.hparams.n_warmup_steps,
+            num_training_steps=self.hparams.max_steps
+        )
+        
+        return dict(
+            optimizer=optimizer,
+            lr_scheduler=dict(
+                scheduler=scheduler,
+                interval='step'
+            )
+        )
 
     def on_epoch_end(self):
-        """ Pytorch lightning hook """
+        """ Pytorch lightning hook """        
+        logger.warning(f"On epoch {self.current_epoch}. Number of frozen epochs is: {self.nr_frozen_epochs}")
         if self.current_epoch + 1 >= self.nr_frozen_epochs:
+            logger.warning("unfreezing PLM(encoder)")
             self.unfreeze_encoder()
     
     @classmethod
