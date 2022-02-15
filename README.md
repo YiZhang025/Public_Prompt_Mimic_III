@@ -86,41 +86,48 @@ TODO
 TODO
 #### mixed template and soft verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --tune_plm
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --tune_plm --dataset icd9_50
 ```
 
 #### Clinical_BioBert with plm freezing 
 ##### manual template and verbalizer
-TODO
-#### manual template and soft verbalizer
-TODO
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type manual --verbalizer_type manual verbalizer_id 0 --max_steps 15000 --zero_shot --no_training --dataset icd9_50
+```
+#### manual template and soft verbalizer  - change id based on the scripts folder for manual template
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type manual --max_steps 15000 --zero_shot --dataset icd9_50
+```
 #### soft template and soft verbalizer
-TODO
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type soft --max_steps 15000 --zero_shot --dataset icd9_50
+```
 #### mixed template and soft verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --zero_shot --dataset icd9_50
 ```
 
 ## Triage ICD9 classification
 ### standard finetuning for classification - e.g. bert/clinical-bert
 
-Using the clinical longformer pipeline is easiest at the moment. A training script is located in the "clinical_longformer/classifier_pipeline" directory. 
+Using the clinical longformer pipeline is easiest at the moment. A training script is located in the "mimic_icd9_classification/clinical_longformer/classifier_pipeline" directory. 
 
 To run training on the top50 icd9 classification task cd to the clinical longformer/classifier directory and run the following:
 
 #### Clinical_Biobert with no freezing of PLM
 ```
-python training_onelabel.py --transformer_type bert --encoder_model emilyalsentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_triage
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --dataset icd9_50
 ```
 
 #### Clinical_Biobert with freezing of PLM
 ```
-python training_onelabel.py --transformer_type bert --encoder_model emilyalsentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_triage
+python training_one_label.py --transformer_type bert --encoder_model emilysentzer/Bio_ClinicalBERT --batch_size 4 --gpus 0 --max_epochs 10 --nr_frozen_epochs 10 --dataset icd9_50
 ```
-At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
-
 ### prompt based learning
-#### Clinical_BioBert with finetuning plm
+
+For prompt based learning navigate to "mimic_icd9_classification/prompt-base-models/"
+
+#### Clinical_BioBert with no freezing 
 ##### manual template and verbalizer
 TODO
 #### manual template and soft verbalizer
@@ -128,18 +135,30 @@ TODO
 #### soft template and soft verbalizer
 TODO
 #### mixed template and soft verbalizer
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --tune_plm --dataset icd9_triage
+```
 
 #### Clinical_BioBert with plm freezing 
 ##### manual template and verbalizer
-TODO
-#### manual template and soft verbalizer
-TODO
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type manual --verbalizer_type manual verbalizer_id 0 --max_steps 15000 --zero_shot --no_training --dataset icd9_triage
+```
+#### manual template and soft verbalizer  - change id based on the scripts folder for manual template
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type manual --max_steps 15000 --zero_shot --dataset icd9_triage
+```
 #### soft template and soft verbalizer
-TODO
+```
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type soft --max_steps 15000 --zero_shot --dataset icd9_triage
+```
 #### mixed template and soft verbalizer
 ```
 python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 15000 --zero_shot --dataset icd9_triage
 ```
+At present this script only uses BERT based models, but can ultimately use any. There is a lot of arguments/tweaks available for this training script so you will want to investigate these within the script.
+
+
 
 # Setup of repo on local machine
 
