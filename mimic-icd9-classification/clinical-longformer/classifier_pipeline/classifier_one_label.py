@@ -12,7 +12,10 @@ import torch
 import torch.nn as nn
 from torch import optim
 from torch.utils.data import DataLoader, RandomSampler
-from transformers import AutoModel,RobertaForMaskedLM, get_linear_schedule_with_warmup
+from transformers import AutoModel,RobertaForMaskedLM
+from transformers import  AdamW, get_linear_schedule_with_warmup,get_constant_schedule_with_warmup  # use AdamW is a standard practice for transformer 
+from transformers.optimization import Adafactor, AdafactorSchedule  # use Adafactor is the default setting for T5
+
 from transformers.models.longformer.modeling_longformer import LongformerSelfAttention
 
 import pytorch_lightning as pl
@@ -532,10 +535,10 @@ class Classifier(pl.LightningModule):
         recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
         acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
 
-        self.log('test_batch_prec',prec)
-        self.log('test_batch_f1',f1)
-        self.log('test_batch_recall',recall)
-        self.log('test_batch_weighted_acc', acc)
+        self.log('test/prec',prec)
+        self.log('test/f1',f1)
+        self.log('test/recall',recall)
+        self.log('test/weighted_acc', acc)
 
         # # get class labels
         # class_labels = self.class_labels
@@ -657,12 +660,24 @@ class Classifier(pl.LightningModule):
                 "lr": self.hparams.encoder_learning_rate,
             },
         ]
-        optimizer = optim.Adam(parameters, lr=self.hparams.learning_rate)
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=self.hparams.n_warmup_steps,
-            num_training_steps=self.hparams.max_steps
-        )
+
+        #TODO add adafactor as an option here
+        if self.hparams.optimizer == "adamw":
+            optimizer = optim.Adam(parameters, lr=self.hparams.learning_rate)
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=self.hparams.n_warmup_steps,
+                num_training_steps=self.hparams.max_steps
+            )
+        elif self.hparams.optimizer == "adafactor":
+            optimizer = Adafactor(parameters,  
+                                lr=self.hparams.learning_rate,
+                                relative_step=False,
+                                scale_parameter=False,
+                                warmup_init=False)  
+            scheduler = get_constant_schedule_with_warmup(optimizer, num_warmup_steps=self.hparams.n_warmup_steps)
+        else:
+            raise NotImplementedError
         
         return dict(
             optimizer=optimizer,

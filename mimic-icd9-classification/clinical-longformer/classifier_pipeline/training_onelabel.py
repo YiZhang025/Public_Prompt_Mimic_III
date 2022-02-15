@@ -162,6 +162,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--optimizer",
+        default="adamw",
+        type=str,
+        help="Optimization algorithm to use e.g. adamw, adafactor",
+    )
+
+    parser.add_argument(
         '--fast_dev_run',
         default=False,
         type=bool,
