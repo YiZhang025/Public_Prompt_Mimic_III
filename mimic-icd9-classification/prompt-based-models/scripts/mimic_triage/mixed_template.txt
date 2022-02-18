@@ -1,0 +1,3 @@
+{"placeholder": "text_a"} {"soft": "This"} patient {"soft":"has diagnosis"} {"mask"}.
+{"placeholder": "text_a"} {"soft": "This"} patient {"soft":"should go to"} {"mask"}.
+{"placeholder": "text_a"} {"soft": "This"} patient should {"soft":"go to"} {"mask"}.
