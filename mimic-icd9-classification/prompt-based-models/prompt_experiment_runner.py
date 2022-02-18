@@ -74,7 +74,8 @@ parser.add_argument("--batch_size", type=int, default=4)
 parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
-parser.add_argument("--optimizer", type=str, default="Adafactor")
+parser.add_argument("--optimizer", type=str, default="adamw")
+parser.add_argument("--gradient_accum_steps", type = int, default = 2)
 
 # instatiate args and set to variable
 args = parser.parse_args()
@@ -141,7 +142,7 @@ if not os.path.exists(ckpt_dir):
 
 
 # lets write these arguments to file for later loading alongside the trained models
-with open(f'{ckpt_dir}/commandline_args.txt', 'w') as f:
+with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
     json.dump(args.__dict__, f, indent=2)
 
 # set up tensorboard logger
@@ -171,12 +172,12 @@ if args.dataset == "icd9_50":
     if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
         batchsize_t = args.batch_size 
         batchsize_e = args.batch_size
-        gradient_accumulation_steps = 4
+        gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False # if multiple gpus are available, one can use model_parallelize
     else:
         batchsize_t = args.batch_size
         batchsize_e = args.batch_size
-        gradient_accumulation_steps = 4
+        gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False
 
 elif args.dataset == "icd9_triage":
@@ -200,12 +201,12 @@ elif args.dataset == "icd9_triage":
     if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
         batchsize_t = args.batch_size 
         batchsize_e = args.batch_size
-        gradient_accumulation_steps = 4
+        gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False # if multiple gpus are available, one can use model_parallelize
     else:
         batchsize_t = args.batch_size
         batchsize_e = args.batch_size
-        gradient_accumulation_steps = 4
+        gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False
 else:
     #TODO implement icd9 triage and mimic readmission
@@ -369,11 +370,6 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             tot_loss += loss.item()
 
             actual_step+=1
-            # clip gradients based on gradient accumulation steps
-            if actual_step % gradient_accumulation_steps == 0:
-                torch.nn.utils.clip_grad_norm_(prompt_model.parameters(), 1.0)
-                glb_step += 1
-
             # log loss to tensorboard  every 50 steps  
             if step %50 ==49:
                
@@ -383,30 +379,35 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             
                 print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)   
 
-            # backprop the loss and update optimizers and then schedulers too
-            # plm
-            if optimizer_plm is not None:
-                optimizer_plm.step()
-                optimizer_plm.zero_grad()
-            if scheduler_plm is not None:
-                scheduler_plm.step()
-            # template
-            if optimizer_template is not None:
-                optimizer_template.step()
-                optimizer_template.zero_grad()
-            if scheduler_template is not None:
-                scheduler_template.step()
-            # verbalizer
-            if optimizer_verb is not None:
-                optimizer_verb.step()
-                optimizer_verb.zero_grad()
-            if scheduler_verb is not None:
-                scheduler_verb.step()
+            # clip gradients based on gradient accumulation steps
+            if actual_step % gradient_accumulation_steps == 0:               
+                torch.nn.utils.clip_grad_norm_(prompt_model.parameters(), 1.0)
+                glb_step += 1
 
-            # check if we are over max steps
-            if glb_step > args.max_steps:
-                leave_training = True
-                break
+                # backprop the loss and update optimizers and then schedulers too
+                # plm
+                if optimizer_plm is not None:
+                    optimizer_plm.step()
+                    optimizer_plm.zero_grad()
+                if scheduler_plm is not None:
+                    scheduler_plm.step()
+                # template
+                if optimizer_template is not None:
+                    optimizer_template.step()
+                    optimizer_template.zero_grad()
+                if scheduler_template is not None:
+                    scheduler_template.step()
+                # verbalizer
+                if optimizer_verb is not None:
+                    optimizer_verb.step()
+                    optimizer_verb.zero_grad()
+                if scheduler_verb is not None:
+                    scheduler_verb.step()
+
+                # check if we are over max steps
+                if glb_step > args.max_steps:
+                    leave_training = True
+                    break
 
         
         # get epoch loss and write to tensorboard
@@ -532,7 +533,7 @@ def plot_confusion_matrix(cm, class_names):
     cm = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
     
     # Use white text if squares are dark; otherwise black.
-    threshold = cm.max() * 0.95
+    threshold = cm.max() * 0.90
     
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if cm[i, j] > threshold else "black"
