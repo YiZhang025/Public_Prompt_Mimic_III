@@ -147,10 +147,10 @@ pretrained_models/*
 pytorch-lightning-models/checkpoints/*
 pytorch-lightning-models/checkpoints/
 pytorch-lightning-models/lightning_logs/*
-mimic-icd9-classification/prompt-based-models/logs/*
-mimic-icd9-classification/prompt-based-models/checkpoints/*
-mimic-icd9-classification/data/*
-mimic-icd9-classification/clinical-longformer/logs/*
-mimic-icd9-classification/clinical-longformer/ckpts/*
-mimic-icd9-classification/clinical-longformer/experiments/*
+mimic-all-tasks/prompt-based-models/logs/*
+mimic-all-tasks/prompt-based-models/checkpoints/*
+mimic-all-tasks/data/*
+mimic-all-tasks/clinical-longformer/logs/*
+mimic-all-tasks/clinical-longformer/ckpts/*
+mimic-all-tasks/clinical-longformer/experiments/*
 
