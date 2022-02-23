@@ -139,12 +139,12 @@ python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsent
 
 #### soft template and soft verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 2 --template_type soft --verbalizer_type soft --verbalizer_id 0 --max_steps 25000 --tune_plm --dataset icd9_triage --zero_shot --gpu 8
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type soft --verbalizer_id 0 --max_steps 25000 --tune_plm --dataset icd9_triage --zero_shot --gpu 8
 
 ```
 #### soft template and manual verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 2 --template_type soft --verbalizer_type manual --verbalizer_id 0 --max_steps 25000 --tune_plm --dataset icd9_triage --zero_shot --gpu 8
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type manual --verbalizer_id 0 --max_steps 25000 --tune_plm --dataset icd9_triage --zero_shot --gpu 8
 
 ```
 
@@ -170,12 +170,12 @@ python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsent
 
 #### soft template and soft verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 2 --template_type soft --verbalizer_type soft --verbalizer_id 0 --max_steps 25000 --dataset icd9_triage --zero_shot --gpu 8
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type soft --verbalizer_id 0 --max_steps 25000 --dataset icd9_triage --zero_shot --gpu 8
 
 ```
 #### soft template and manual verbalizer
 ```
-python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 2 --template_type soft --verbalizer_type manual --verbalizer_id 0 --max_steps 25000 --dataset icd9_triage --zero_shot --gpu 8
+python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type soft --verbalizer_type manual --verbalizer_id 0 --max_steps 25000 --dataset icd9_triage --zero_shot --gpu 8
 
 ```
 
