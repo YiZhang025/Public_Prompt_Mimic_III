@@ -22,7 +22,7 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 import torchmetrics.functional.classification as metrics
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
+from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
 
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
@@ -56,7 +56,7 @@ parser.add_argument("--zero_shot", action="store_true")
 parser.add_argument("--no_training", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
-parser.add_argument("--project_root", default="./", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
+parser.add_argument("--project_root", default="/mnt/sdg/niallt/saved_models/mimic-tasks/prompt-based-models/", help="The project root in the file system, i.e. the absolute path of OpenPrompt")
 parser.add_argument("--template_id", type=int, default = 2)
 parser.add_argument("--verbalizer_id", type=int, default = 0)
 parser.add_argument("--template_type", type=str, default ="manual")
@@ -74,8 +74,10 @@ parser.add_argument("--batch_size", type=int, default=4)
 parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
-parser.add_argument("--optimizer", type=str, default="adamw")
+parser.add_argument("--optimizer", type=str, default="adafactor")
 parser.add_argument("--gradient_accum_steps", type = int, default = 2)
+parser.add_argument("--save_ckpt", type=bool, default=True)
+parser.add_argument("--gpu_num", type=int, default = 0)
 
 # instatiate args and set to variable
 args = parser.parse_args()
@@ -135,8 +137,9 @@ else:
 
 # check if the checkpoint and params dir exists  
 
-if not os.path.exists(ckpt_dir):
-    os.makedirs(ckpt_dir)
+if args.save_ckpt:
+    if not os.path.exists(ckpt_dir):
+        os.makedirs(ckpt_dir)
 
 
 
@@ -243,28 +246,33 @@ elif args.verbalizer_type == "soft":
 wrapped_example = mytemplate.wrap_one_example(dataset['train'][0]) 
 print(wrapped_example)
 
-
+# are we using cuda and if so which number of device
 use_cuda = True
+cuda_device = torch.device(f'cuda:{args.gpu_num}')
+# now set the default gpu to this one
+torch.cuda.set_device(cuda_device)
 
 
 print(f"tune_plm value: {args.tune_plm}")
 prompt_model = PromptForClassification(plm=plm,template=mytemplate, verbalizer=myverbalizer, freeze_plm=freeze_plm, plm_eval_mode=args.plm_eval_mode)
 if use_cuda:
-    prompt_model=  prompt_model.cuda()
+    prompt_model=  prompt_model.to(cuda_device)
 
 if model_parallelize:
     prompt_model.parallelize()
 
+do_training = (not args.no_training)
+if do_training:
+    logger.warning(f"Do training is True - creating train and validation dataloders!")
+    train_dataloader = PromptDataLoader(dataset=dataset["train"], template=mytemplate, tokenizer=tokenizer, 
+        tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
+        batch_size=batchsize_t,shuffle=True, teacher_forcing=False, predict_eos_token=False,
+        truncate_method="tail")
 
-train_dataloader = PromptDataLoader(dataset=dataset["train"], template=mytemplate, tokenizer=tokenizer, 
-    tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
-    batch_size=batchsize_t,shuffle=True, teacher_forcing=False, predict_eos_token=False,
-    truncate_method="tail")
-
-validation_dataloader = PromptDataLoader(dataset=dataset["validation"], template=mytemplate, tokenizer=tokenizer, 
-    tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
-    batch_size=batchsize_e,shuffle=False, teacher_forcing=False, predict_eos_token=False,
-    truncate_method="tail")
+    validation_dataloader = PromptDataLoader(dataset=dataset["validation"], template=mytemplate, tokenizer=tokenizer, 
+        tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
+        batch_size=batchsize_e,shuffle=False, teacher_forcing=False, predict_eos_token=False,
+        truncate_method="tail")
 
 # zero-shot test
 test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
@@ -338,6 +346,7 @@ elif args.verbalizer_type == "manual":
 
 def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir = ckpt_dir):
 
+    logger.warning(f"cuda current device inside training is: {torch.cuda.current_device()}")
     # set model to train 
     prompt_model.train()
 
@@ -361,7 +370,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
 
         for step, inputs in enumerate(train_dataloader):
             if use_cuda:
-                inputs = inputs.cuda()
+                inputs = inputs.to(cuda_device)
             logits = prompt_model(inputs)
             labels = inputs['label']
             # print(f"labels : {labels}")
@@ -370,17 +379,17 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
             tot_loss += loss.item()
 
             actual_step+=1
-            # log loss to tensorboard  every 50 steps  
-            if step %50 ==49:
-               
-                aveloss = tot_loss/(step+1)
-                # write to tensorboard
-                writer.add_scalar("train/batch_loss", aveloss, glb_step)                
-            
-                print("Epoch {}, average loss: {}".format(epoch, tot_loss/(step+1)), flush=True)   
+            # log loss to tensorboard  every 50 steps    
 
             # clip gradients based on gradient accumulation steps
-            if actual_step % gradient_accumulation_steps == 0:               
+            if actual_step % gradient_accumulation_steps == 0:
+
+                # log loss
+                aveloss = tot_loss/(step+1)
+                # write to tensorboard
+                writer.add_scalar("train/batch_loss", aveloss, glb_step)        
+
+                # clip grads            
                 torch.nn.utils.clip_grad_norm_(prompt_model.parameters(), 1.0)
                 glb_step += 1
 
@@ -413,12 +422,13 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         # get epoch loss and write to tensorboard
 
         epoch_loss = tot_loss/len(train_dataloader)
+        print("Epoch {}, loss: {}".format(epoch, epoch_loss), flush=True)   
         writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
 
         # run a run through validation set to get some metrics        
         val_acc, val_prec, val_recall, val_f1, cm_figure = evaluate(prompt_model, validation_dataloader)
 
-        writer.add_scalar("valid/accuracy", val_acc, epoch)
+        writer.add_scalar("valid/balanced_accuracy", val_acc, epoch)
         writer.add_scalar("valid/precision", val_prec, epoch)
         writer.add_scalar("valid/recall", val_recall, epoch)
         writer.add_scalar("valid/f1", val_f1, epoch)
@@ -455,14 +465,14 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
     with torch.no_grad():
         for step, inputs in enumerate(dataloader):
             if use_cuda:
-                inputs = inputs.cuda()
+                inputs = inputs.to(cuda_device)
             logits = prompt_model(inputs)
             labels = inputs['label']
             alllabels.extend(labels.cpu().tolist())
             allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 
-    acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
-    print(f"accuracy using manual method: {acc}")
+    # acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
+    # print(f"accuracy using manual method: {acc}")
 
     # below is torch metrics but needs to still be tensors
     # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
@@ -471,6 +481,7 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
     # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
     
     # get sklearn based metrics
+    acc = balanced_accuracy_score(alllabels, allpreds)
     f1 = f1_score(alllabels, allpreds, average = 'weighted')
     prec = precision_score(alllabels, allpreds, average = 'weighted')
     recall = recall_score(alllabels, allpreds, average = 'weighted')   
@@ -560,12 +571,13 @@ if args.zero_shot:
 
 # run training
 
-do_training = (not args.no_training)
 logger.warning(f"do training : {do_training}")
 if do_training:
     logger.warning("Beginning full training!")
     train(prompt_model, train_dataloader, args.num_epochs, ckpt_dir)
 
+elif not do_training:
+    logger.warning("No training will be performed!")
 # write the contents to file
 
 print(content_write)
