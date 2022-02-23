@@ -29,7 +29,7 @@ import torchmetrics.functional.classification as metrics
 # import pytorch_lightning.metrics.functional.classification as old_metrics
 
 from sklearn import metrics as skmetrics
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
+from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix
 
 from loguru import logger
 
@@ -113,10 +113,11 @@ class Classifier(pl.LightningModule):
     # *************************
     class DataModule(pl.LightningDataModule):
         def __init__(self, classifier_instance):
-            super().__init__()
-            
-            self.hparams = classifier_instance.hparams
+            super().__init__()    
+            # this needs to update to latest pytorch lightning 
+            self.hparams.update(classifier_instance.hparams)
 
+            print("hparams inside datamodule: ",classifier_instance.hparams )
 
             if self.hparams.transformer_type == 'longformer':
                 self.hparams.batch_size = 1
@@ -253,8 +254,7 @@ class Classifier(pl.LightningModule):
 
     def __init__(self, hparams: Namespace) -> None:
         super(Classifier,self).__init__()
-        self.save_hyperparameters()
-        self.hparams = hparams
+        self.save_hyperparameters(hparams)        
         self.batch_size = hparams.batch_size
         
 
@@ -486,11 +486,11 @@ class Classifier(pl.LightningModule):
         loss_val = self.loss(model_out, targets)
 
         # in DP mode (default) make sure if result is scalar, there's another dim in the beginning
-        if self.trainer.use_dp or self.trainer.use_ddp2:
+        if self.trainer.data_parallel:
             loss_val = loss_val.unsqueeze(0)
 
 
-        self.log('loss',loss_val)
+        self.log('train/batch_loss',loss_val)
 
         # can also return just a scalar instead of a dict (return loss_val)
         return loss_val
@@ -513,10 +513,10 @@ class Classifier(pl.LightningModule):
         loss_val = self.loss(model_out, targets)
 
         # in DP mode (default) make sure if result is scalar, there's another dim in the beginning
-        if self.trainer.use_dp or self.trainer.use_ddp2:
+        if self.trainer.data_parallel:
             loss_val = loss_val.unsqueeze(0)
             
-        self.log('test_loss',loss_val)
+        self.log('test/loss',loss_val)
 
 
         y_hat=model_out['logits']
@@ -538,7 +538,7 @@ class Classifier(pl.LightningModule):
         self.log('test/prec',prec)
         self.log('test/f1',f1)
         self.log('test/recall',recall)
-        self.log('test/weighted_acc', acc)
+        self.log('test/balanced_accuracy', acc)
 
         # # get class labels
         # class_labels = self.class_labels
@@ -584,7 +584,7 @@ class Classifier(pl.LightningModule):
             val_acc = val_acc.cuda(loss_val.device.index)
 
         # in DP mode (default) make sure if result is scalar, there's another dim in the beginning
-        if self.trainer.use_dp or self.trainer.use_ddp2:
+        if self.trainer.data_parallel:
             loss_val = loss_val.unsqueeze(0)
             val_acc = val_acc.unsqueeze(0)
 
@@ -594,21 +594,21 @@ class Classifier(pl.LightningModule):
         
         self.log('val_loss',loss_val,prog_bar=True)
 
-        f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
-        prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
-        recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
-        acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        # f1 = metrics.f1(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        # prec =metrics.precision(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        # recall = metrics.recall(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
+        # acc = metrics.accuracy(labels_hat,y, average = 'weighted', num_classes = len(self.class_labels))
 
-        # print(f"f1 from torch metrics is: ", f1)
-        # print(f"f1 from pytorch metrics is : { old_metrics.f1_score(labels_hat,y,    class_reduction='weighted')}")
-        # print(f"F1 from sk learn is : {skmetrics.f1_score(y,labels_hat, average='weighted')}")
-        # logger.info("val_prec at moment is: ",prec)
-        # logger.info("val_f1 at moment is: ",f1)
+        # # print(f"f1 from torch metrics is: ", f1)
+        # # print(f"f1 from pytorch metrics is : { old_metrics.f1_score(labels_hat,y,    class_reduction='weighted')}")
+        # # print(f"F1 from sk learn is : {skmetrics.f1_score(y,labels_hat, average='weighted')}")
+        # # logger.info("val_prec at moment is: ",prec)
+        # # logger.info("val_f1 at moment is: ",f1)
 
-        self.log('valid/prec',prec)
-        self.log('valid/f1',f1)
-        self.log('valid/recall',recall)
-        self.log('valid/acc_weighted', acc,prog_bar=True)
+        # self.log('valid/prec',prec, on_step = False, on_epoch = True)
+        # self.log('valid/f1',f1, on_step = False, on_epoch = True)
+        # self.log('valid/recall',recall, on_step = False, on_epoch = True)
+        # self.log('valid/balanced_accuracy', acc, on_step = False, on_epoch = Trueprog_bar=True)
 
         return {"loss": loss_val, "predictions": model_out["logits"], "labels": y}
 
@@ -623,10 +623,6 @@ class Classifier(pl.LightningModule):
             for out_predictions in output["predictions"].to('cpu').detach().numpy():                               
                 predictions.append(np.argmax(out_predictions, axis = -1))
 
-
-        acc = sum([int(i==j) for i,j in zip(predictions, labels)])/len(predictions)
-        print(f"accuracy using manual method: {acc}")
-
         # below is torch metrics but needs to still be tensors
         # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
         # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
@@ -634,6 +630,7 @@ class Classifier(pl.LightningModule):
         # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
         
         # get sklearn based metrics
+        acc = balanced_accuracy_score(labels, predictions)
         f1 = f1_score(labels, predictions, average = 'weighted')
         prec = precision_score(labels, predictions, average = 'weighted')
         recall = recall_score(labels, predictions, average = 'weighted')    
@@ -646,9 +643,18 @@ class Classifier(pl.LightningModule):
 
         # make plot 
         cm_figure = plot_confusion_matrix(cm, class_labels)
+        
+        # log this for monitoring
+        self.log('monitor_balanced_accuracy', acc)
 
         # log to tensorboard
         self.logger.experiment.add_figure("valid/confusion_matrix", cm_figure, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/balanced_accuracy',acc, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/prec',prec, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/f1',f1, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/recall',recall, self.current_epoch)
+
+
 
 
     def configure_optimizers(self):

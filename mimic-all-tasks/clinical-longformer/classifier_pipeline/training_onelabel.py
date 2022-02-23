@@ -86,9 +86,10 @@ def main(hparams) -> None:
         callbacks = [early_stopping_callback],
         max_epochs=hparams.max_epochs,
         default_root_dir=f'./classifier_pipeline/{hparams.encoder_model}',
-        accelerator = hparams.accelerator
+        strategy = hparams.accelerator
     )
 
+    print(f"trainer is {trainer}")
     # ------------------------
     # 6 START TRAINING
     # ------------------------
@@ -120,7 +121,7 @@ if __name__ == "__main__":
 
     # Early Stopping
     parser.add_argument(
-        "--monitor", default="valid/acc_weighted", type=str, help="Quantity to monitor."
+        "--monitor", default="monitor_balanced_accuracy", type=str, help="Quantity to monitor."
     )
 
     parser.add_argument(
@@ -163,7 +164,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--optimizer",
-        default="adamw",
+        default="adafactor",
         type=str,
         help="Optimization algorithm to use e.g. adamw, adafactor",
     )
