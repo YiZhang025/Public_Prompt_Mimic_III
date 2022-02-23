@@ -78,7 +78,7 @@ def main(hparams) -> None:
     # ------------------------
     trainer = Trainer(
         logger=tb_logger,
-        gpus=hparams.gpus,
+        gpus=[hparams.gpus],
         log_gpu_memory="all",
         fast_dev_run=hparams.fast_dev_run,
         accumulate_grad_batches=hparams.accumulate_grad_batches,
@@ -191,7 +191,7 @@ if __name__ == "__main__":
     )
 
     # gpu args - 
-    parser.add_argument("--gpus", type=str, default=1, help="Which gpu device to use e.g. 0 for cuda:0, or for more gpus use comma separated e.g. 0,1,2")
+    parser.add_argument("--gpus", type=int, default=1, help="Which gpu device to use e.g. 0 for cuda:0, or for more gpus use comma separated e.g. 0,1,2")
 
     # use ddp 
     parser.add_argument("--accelerator",default = None, type=str, help ="whether or not to use data paralell and switch accelerator for trainer class. Use dp for multiple gpus 1 machine")
