@@ -137,7 +137,7 @@ python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsent
 #### mixed template and manual verbalizer
 ```
 python prompt_experiment_runner.py --model bert --model_name_or_path emilyalsentzer/Bio_ClinicalBERT --num_epochs 10 --template_id 0 --template_type mixed --max_steps 25000 --verbalizer_type manual --verbalizer_id 0 --dataset icd9_50 --zero_shot
-
+```
 ## Triage ICD9 classification
 ### standard finetuning for classification - e.g. bert/clinical-bert
 
