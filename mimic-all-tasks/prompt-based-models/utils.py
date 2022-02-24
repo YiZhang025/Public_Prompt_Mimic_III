@@ -236,7 +236,7 @@ class Mimic_Mortality_Processor(DataProcessor):
         
         # need to either initializer and fit the label encoder if not provided
         if label_encoder is None:
-            self.label_encoder = LabelEncoder(np.unique(df["label"]).tolist())
+            self.label_encoder = LabelEncoder(np.unique(df["label"]).tolist(), reserved_labels = [])
         else: 
             print("we were given a label encoder")
             self.label_encoder = label_encoder

@@ -15,7 +15,7 @@ from openprompt import PromptForClassification
 # from openprompt.utils.logging import logger
 from loguru import logger
 
-from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor
+from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor, Mimic_Mortality_Processor
 import time
 import os
 from datetime import datetime
@@ -211,6 +211,38 @@ elif args.dataset == "icd9_triage":
         batchsize_e = args.batch_size
         gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False
+
+elif args.dataset == "mortality":
+    logger.warning(f"Using the following dataset: {args.dataset} ")
+    Processor = Mimic_Mortality_Processor
+    # update data_dir
+    data_dir = "../clinical-outcomes-data/mimic3-clinical-outcomes/mp/"
+
+    # get different splits
+    dataset['train'] = Processor().get_examples(data_dir = data_dir, mode = "train")
+    dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid")
+    dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test")
+    # the below class labels should align with the label encoder fitted to training data
+    # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
+    # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
+    class_labels =Processor().load_class_labels()
+    print(f"class labels: {class_labels}")
+    print(f"number of classes: {len(class_labels)}")
+    scriptsbase = f"{args.scripts_path}/mimic_mortality/"
+    scriptformat = "txt"
+    max_seq_l = 480 # this should be specified according to the running GPU's capacity 
+    if args.tune_plm: # tune the entire plm will use more gpu-memories, thus we should use a smaller batch_size.
+        batchsize_t = args.batch_size 
+        batchsize_e = args.batch_size
+        gradient_accumulation_steps = args.gradient_accum_steps
+        model_parallelize = False # if multiple gpus are available, one can use model_parallelize
+    else:
+        batchsize_t = args.batch_size
+        batchsize_e = args.batch_size
+        gradient_accumulation_steps = args.gradient_accum_steps
+        model_parallelize = False
+
+
 else:
     #TODO implement icd9 triage and mimic readmission
     raise NotImplementedError
@@ -373,7 +405,6 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
                 inputs = inputs.to(cuda_device)
             logits = prompt_model(inputs)
             labels = inputs['label']
-            # print(f"labels : {labels}")
             loss = loss_func(logits, labels)
             loss.backward()
             tot_loss += loss.item()
