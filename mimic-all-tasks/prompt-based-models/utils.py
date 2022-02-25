@@ -17,6 +17,7 @@ import numpy as np
 from tqdm import tqdm
 
 from torchnlp.encoders import LabelEncoder
+from sklearn.utils.class_weight import compute_class_weight
 
 
 #TODO - may need to refactor how labe encoder is instantiated. At moment it does it separatley for each set
@@ -38,16 +39,36 @@ class Mimic_ICD9_Processor(DataProcessor):
     '''
     # TODO Test needed
     def __init__(self):
-        super().__init__()        
+        super().__init__()
+
+
+    def balance_dataset(self,df, random_state = 42):
+    
+        '''
+        Function to balance the training dataset - won't bother with the valid and test sets
+
+
+        '''   
+
+        # slightly clunky but works
+        g = df.groupby('hospital_expire_flag')
+        g = pd.DataFrame(g.apply(lambda x: x.sample(g.size().min(), random_state = random_state).reset_index(drop=True)))
+        g.reset_index(drop=True, inplace = True)
+
+        return g.sample(frac=1, random_state=random_state)
 
     def get_examples(self, data_dir, mode = "train", label_encoder = None,
-                     generate_class_labels = False, class_labels_save_dir = "scripts/mimic_icd9_top50/"):
+                     generate_class_labels = False, class_labels_save_dir = "scripts/mimic_icd9_top50/", balance_data = False):
 
         path = f"{data_dir}/{mode}.csv"
         print(f"loading {mode} data")
         print(f"data path provided was: {path}")
         examples = []
         df = pd.read_csv(path)
+
+        # balance data based on minority class if desired
+        if balance_data:
+            df = self.balance_dataset(df)
 
         # need to either initializer and fit the label encoder if not provided
         if label_encoder is None:
@@ -130,17 +151,35 @@ class Mimic_ICD9_Triage_Processor(DataProcessor):
     '''
     # TODO Test needed
     def __init__(self):
-        super().__init__()        
+        super().__init__()
+
+    def balance_dataset(self,df, random_state = 42):
+    
+        '''
+        Function to balance the training dataset - won't bother with the valid and test sets
+
+
+        '''   
+
+        # slightly clunky but works
+        g = df.groupby('hospital_expire_flag')
+        g = pd.DataFrame(g.apply(lambda x: x.sample(g.size().min(), random_state = random_state).reset_index(drop=True)))
+        g.reset_index(drop=True, inplace = True)  
+
+        # give dataframe a shuffle to remove the order imposes by the above 
+        return g.sample(frac=1, random_state=random_state)     
 
     def get_examples(self, data_dir, mode = "train", label_encoder = None,
-                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_triage/"):
+                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_triage/", balance_data = False):
 
         path = f"{data_dir}/{mode}.csv"
         print(f"loading {mode} data")
         print(f"data path provided was: {path}")
         examples = []
         df = pd.read_csv(path)
-
+        # balance data based on minority class if desired
+        if balance_data:
+            df = self.balance_dataset(df)
 
         # need to either initializer and fit the label encoder if not provided
         if label_encoder is None:
@@ -220,16 +259,49 @@ class Mimic_Mortality_Processor(DataProcessor):
     '''
     # TODO Test needed
     def __init__(self):
-        super().__init__()        
+        super().__init__()   
+
+    #TODO - implement a class weight calculation instead of just subsetting data - same as paper. 
+    # can use sklearn: https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
+    # and implement such as: https://stackoverflow.com/questions/61414065/pytorch-weight-in-cross-entropy-loss
+
+    def get_class_weights(self,df):
+
+        # calculate class weights 
+        class_weights = compute_class_weight("balanced", classes = np.unique(df["label"]), y = df['label'] )
+
+        return class_weights
+
+    def balance_dataset(self,df, random_state = 42):
+    
+        '''
+        Function to balance the training dataset - won't bother with the valid and test sets
+
+
+        '''   
+
+        # slightly clunky but works
+        g = df.groupby('hospital_expire_flag')
+        g = pd.DataFrame(g.apply(lambda x: x.sample(g.size().min(), random_state = random_state).reset_index(drop=True)))
+        g.reset_index(drop=True, inplace = True)  
+
+        # give dataframe a shuffle to remove the order imposes by the above 
+        return g.sample(frac=1, random_state=random_state)   
 
     def get_examples(self, data_dir, mode = "train", label_encoder = None,
-                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_mortality/"):
+                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_mortality/", 
+                     balance_data = False, class_weights = True):
 
         path = f"{data_dir}/{mode}.csv"
         print(f"loading {mode} data")
         print(f"data path provided was: {path}")
         examples = []
         df = pd.read_csv(path)
+
+        # balance data based on minority class if desired
+        if balance_data:
+            logger.warning("Balancing the dataset based on minority class!!")
+            df = self.balance_dataset(df)
 
         # map the binary classification label to a new string class label
         df["label"] = df["hospital_expire_flag"].map({0:"alive",1:"deceased"})
@@ -241,6 +313,9 @@ class Mimic_Mortality_Processor(DataProcessor):
             print("we were given a label encoder")
             self.label_encoder = label_encoder
 
+        # calculate class_weights
+        if class_weights:
+            task_class_weights = self.get_class_weights(df)
         
         for idx, row in tqdm(df.iterrows()):
 #             print(row)
@@ -259,8 +334,7 @@ class Mimic_Mortality_Processor(DataProcessor):
         logger.info(f"Returning {len(examples)} samples!") 
 
 #         now we want to return a list of the non-encoded labels based on the fitted label encoder
-        if generate_class_labels:
-        
+        if generate_class_labels:            
             if not os.path.exists(class_labels_save_dir):
                 os.makedirs(class_labels_save_dir)
             logger.info(f"Saving class labels to: {class_labels_save_dir}")
@@ -276,7 +350,11 @@ class Mimic_Mortality_Processor(DataProcessor):
             textfile.write(class_labels[-1])
             textfile.close() 
 
-        return examples
+        if class_weights:
+            logger.warning("Returning both examples and class weights for loss function!")
+            return examples, task_class_weights
+        else:
+            return examples
 
     def generate_class_labels(self):
         # now we want to return a list of the non-encoded labels based on the fitted label encoder
