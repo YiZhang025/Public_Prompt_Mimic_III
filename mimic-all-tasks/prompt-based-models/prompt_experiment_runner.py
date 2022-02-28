@@ -15,7 +15,7 @@ from openprompt import PromptForClassification
 # from openprompt.utils.logging import logger
 from loguru import logger
 
-from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor, Mimic_Mortality_Processor
+from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor, Mimic_Mortality_Processor, customPromptDataLoader
 import time
 import os
 from datetime import datetime
@@ -24,12 +24,14 @@ from torch.utils.tensorboard import SummaryWriter
 import torchmetrics.functional.classification as metrics
 from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix, roc_auc_score 
 
+from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
+
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 
 import json
 import itertools
-
+from collections import Counter
 
 '''
 Script to run different setups of prompt learning.
@@ -76,8 +78,9 @@ parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
 parser.add_argument("--optimizer", type=str, default="adafactor")
 parser.add_argument("--gradient_accum_steps", type = int, default = 2)
-parser.add_argument("--save_ckpt", type=bool, default=True)
+parser.add_argument("--dev_run",action="store_true")
 parser.add_argument("--gpu_num", type=int, default = 0)
+
 
 # instatiate args and set to variable
 args = parser.parse_args()
@@ -137,22 +140,22 @@ else:
 
 # check if the checkpoint and params dir exists  
 
-if args.save_ckpt:
+if not args.dev_run:
     if not os.path.exists(ckpt_dir):
         os.makedirs(ckpt_dir)
 
-
-
-
-# lets write these arguments to file for later loading alongside the trained models
-with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
-    json.dump(args.__dict__, f, indent=2)
+    # lets write these arguments to file for later loading alongside the trained models
+    with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
+        json.dump(args.__dict__, f, indent=2)
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
 
 dataset = {}
 
+# crude setting of sampler to None - changed for mortality with umbalanced dataset
+
+sampler = None
 # Below are multiple dataset examples, although right now just mimic ic9-top50. 
 if args.dataset == "icd9_50":
     logger.warning(f"Using the following dataset: {args.dataset} ")
@@ -220,9 +223,20 @@ elif args.dataset == "mortality":
     data_dir = "../clinical-outcomes-data/mimic3-clinical-outcomes/mp/"
 
     # get different splits - we want to return class weights for training set!
-    dataset['train'], task_class_weights = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=True)
-    dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False)
-    dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False)
+    dataset['train'], task_class_weights = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=False, sampler_weights= True)
+
+    if args.dev_run:
+        logger.warning("PEFORMING DEV RUN - LOGS WILL BE SAVED BUT NO CHECKPOINT! WILL ALSO USE A SUBSET OF DATA!")
+        dataset['train'] = dataset['train'][:500]
+        task_class_weights = task_class_weights[:500]
+        dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)[:100]
+        dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)[:100]
+    else:
+        dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)
+        dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)
+
+    # now set sampler based on these weights  - this will mean during batch loading the dataloader samples based on these weights
+    sampler = WeightedRandomSampler(task_class_weights, len(task_class_weights), replacement = True)
     # the below class labels should align with the label encoder fitted to training data
     # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
     # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
@@ -296,19 +310,25 @@ if model_parallelize:
 
 do_training = (not args.no_training)
 if do_training:
+    # if we have a sampler .e.g weightedrandomsampler. Do not shuffle
+    if "WeightedRandom" in type(sampler).__name__:
+        logger.warning("Sampler is WeightedRandom - will not be shuffling training data!")
+        shuffle = False
+    else:
+        shuffle = True
     logger.warning(f"Do training is True - creating train and validation dataloders!")
-    train_dataloader = PromptDataLoader(dataset=dataset["train"], template=mytemplate, tokenizer=tokenizer, 
+    train_dataloader = customPromptDataLoader(dataset=dataset["train"], template=mytemplate, tokenizer=tokenizer, 
         tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
-        batch_size=batchsize_t,shuffle=True, teacher_forcing=False, predict_eos_token=False,
+        batch_size=batchsize_t,shuffle=shuffle, sampler = sampler, teacher_forcing=False, predict_eos_token=False,
         truncate_method="tail")
 
-    validation_dataloader = PromptDataLoader(dataset=dataset["validation"], template=mytemplate, tokenizer=tokenizer, 
+    validation_dataloader = customPromptDataLoader(dataset=dataset["validation"], template=mytemplate, tokenizer=tokenizer, 
         tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
         batch_size=batchsize_e,shuffle=False, teacher_forcing=False, predict_eos_token=False,
         truncate_method="tail")
 
 # zero-shot test
-test_dataloader = PromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
+test_dataloader = customPromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
     tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
     batch_size=batchsize_e,shuffle=False, teacher_forcing=False, predict_eos_token=False,
     truncate_method="tail")
@@ -321,7 +341,11 @@ from transformers.optimization import Adafactor, AdafactorSchedule  # use Adafac
 #TODO update this to handle class weights for imabalanced datasets
 if "task_class_weights" in locals():
     logger.warning("we have some task specific class weights - passing to CE loss")
-    task_class_weights = torch.tensor(task_class_weights, dtype=torch.float).to(cuda_device)
+    # get from the class_weight function
+    # task_class_weights = torch.tensor(task_class_weights, dtype=torch.float).to(cuda_device)
+    
+    # set manually cause above didnt work
+    task_class_weights = torch.tensor([1,16.1], dtype=torch.float).to(cuda_device)
     loss_func = torch.nn.CrossEntropyLoss(weight = task_class_weights, reduction = 'mean')
 else:
     loss_func = torch.nn.CrossEntropyLoss()

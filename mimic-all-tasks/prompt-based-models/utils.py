@@ -19,6 +19,28 @@ from tqdm import tqdm
 from torchnlp.encoders import LabelEncoder
 from sklearn.utils.class_weight import compute_class_weight
 
+from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
+from transformers.configuration_utils import PretrainedConfig
+from transformers.generation_utils import GenerationMixin
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset
+from typing import *
+from openprompt.data_utils import InputExample, InputFeatures
+from torch.utils.data._utils.collate import default_collate
+from tqdm.std import tqdm
+from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.utils.dummy_pt_objects import PreTrainedModel
+from openprompt.plms.utils import TokenizerWrapper
+from openprompt.prompt_base import Template, Verbalizer
+from collections import defaultdict
+from openprompt.utils import round_list, signature
+import numpy as np
+from torch.utils.data import DataLoader
+from yacs.config import CfgNode
+from openprompt.utils.logging import logger
+from transformers import  AdamW, get_linear_schedule_with_warmup
+
 
 #TODO - may need to refactor how labe encoder is instantiated. At moment it does it separatley for each set
 
@@ -261,17 +283,52 @@ class Mimic_Mortality_Processor(DataProcessor):
     def __init__(self):
         super().__init__()   
 
-    #TODO - implement a class weight calculation instead of just subsetting data - same as paper. 
-    # can use sklearn: https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
-    # and implement such as: https://stackoverflow.com/questions/61414065/pytorch-weight-in-cross-entropy-loss
-
-    def get_class_weights(self,df):
+    def get_ce_class_weights(self,df):
+        
+        '''
+        Function to calculate class weights to pass to cross entropy loss in pytorch framework.
+        
+        Here we use the sklearn compute_class_weight function.
+        
+        Returns: un-normalized class weights inverse to sample size. i.e. lower number given to majority class
+        '''
 
         # calculate class weights 
-        class_weights = compute_class_weight("balanced", classes = np.unique(df["label"]), y = df['label'] )
+        ce_class_weights = compute_class_weight("balanced", classes = np.unique(df["hospital_expire_flag"]),
+                                             y = df['hospital_expire_flag'] )
 
-        return class_weights
-
+        return ce_class_weights
+    
+    def get_weighted_sampler_class_weights(self, df, normalized = True):
+        
+        '''
+        Function to create array of per sample class weights to pass to the weighted random sampler.
+        
+        Purpose is to create batches which sample from the entire dataset based on class weights ->
+        this attempts to create balanced batches during training.
+        
+        DO NOT SHUFFLE DATASET WHEN TRAINING - use weightedrandomsampler
+        '''
+        
+        if normalized:
+            nSamples = df["hospital_expire_flag"].value_counts()
+            class_weights = [1 - (x / sum(nSamples)) for x in nSamples]
+            
+        # can use the class weights derived from the get_ce_class weights function
+        else:
+            class_weights = self.get_ce_class_weights(df)
+        
+        # creata dict for easy mapping
+        class_weights_dict = {0:class_weights[0], 1:class_weights[1]}        
+        
+        # then need to assign these class specific weights to each sample based on their class
+        class_weights_array = df["hospital_expire_flag"].map(class_weights_dict)
+        
+        return class_weights_array
+        
+        
+        
+        
     def balance_dataset(self,df, random_state = 42):
     
         '''
@@ -280,27 +337,27 @@ class Mimic_Mortality_Processor(DataProcessor):
 
         '''   
 
+
         # slightly clunky but works
         g = df.groupby('hospital_expire_flag')
         g = pd.DataFrame(g.apply(lambda x: x.sample(g.size().min(), random_state = random_state).reset_index(drop=True)))
-        g.reset_index(drop=True, inplace = True)  
+        g.reset_index(drop=True, inplace = True)
 
-        # give dataframe a shuffle to remove the order imposes by the above 
-        return g.sample(frac=1, random_state=random_state)   
+        return g.sample(frac=1, random_state=random_state)
 
     def get_examples(self, data_dir, mode = "train", label_encoder = None,
-                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_mortality/", 
-                     balance_data = False, class_weights = True):
+                     generate_class_labels = False, class_labels_save_dir = "./scripts/mimic_mortality/",
+                     balance_data = False, class_weights = False, sampler_weights = False):
 
         path = f"{data_dir}/{mode}.csv"
         print(f"loading {mode} data")
         print(f"data path provided was: {path}")
         examples = []
         df = pd.read_csv(path)
-
-        # balance data based on minority class if desired
+        
+        # if balance data - balance based on minority class
+        
         if balance_data:
-            logger.warning("Balancing the dataset based on minority class!!")
             df = self.balance_dataset(df)
 
         # map the binary classification label to a new string class label
@@ -308,25 +365,29 @@ class Mimic_Mortality_Processor(DataProcessor):
         
         # need to either initializer and fit the label encoder if not provided
         if label_encoder is None:
-            self.label_encoder = LabelEncoder(np.unique(df["label"]).tolist(), reserved_labels = [])
+            self.label_encoder = LabelEncoder(np.unique(df["label"]).tolist(),reserved_labels = [])
         else: 
             print("we were given a label encoder")
             self.label_encoder = label_encoder
-
+            
         # calculate class_weights
         if class_weights:
-            task_class_weights = self.get_class_weights(df)
+            print("getting class weights")
+            task_class_weights = self.get_ce_class_weights(df)
         
+        # calculate all sample weights for weighted sampler
+        if sampler_weights:
+            print("getting weights for sampler!")
+            sampler_class_weights = self.get_weighted_sampler_class_weights(df)
+
+        print("label encoder idx to token: ", self.label_encoder.token_to_index)
         for idx, row in tqdm(df.iterrows()):
 #             print(row)
             body, label = row['text'],row['label']
             label = self.label_encoder.encode(label)
-#             print(f"body : {body}")
-#             print(f"label: {label}")
-#             print(f"labels original: {self.label_encoder.index_to_token[label]}")
             
             text_a = body.replace('\\', ' ')
-
+                
             example = InputExample(
                 guid=str(idx), text_a=text_a, label=int(label))
             examples.append(example)
@@ -334,7 +395,8 @@ class Mimic_Mortality_Processor(DataProcessor):
         logger.info(f"Returning {len(examples)} samples!") 
 
 #         now we want to return a list of the non-encoded labels based on the fitted label encoder
-        if generate_class_labels:            
+        if generate_class_labels:
+        
             if not os.path.exists(class_labels_save_dir):
                 os.makedirs(class_labels_save_dir)
             logger.info(f"Saving class labels to: {class_labels_save_dir}")
@@ -348,11 +410,15 @@ class Mimic_Mortality_Processor(DataProcessor):
                 textfile.write(element + "\n")
             # now write the last item to the file
             textfile.write(class_labels[-1])
-            textfile.close() 
-
+            textfile.close()
+            
+        if class_weights and sampler_weights:
+            print("cannot return both class and sample weights. Just returning samples")
+            return examples
         if class_weights:
-            logger.warning("Returning both examples and class weights for loss function!")
             return examples, task_class_weights
+        elif sampler_weights:
+            return examples, sampler_class_weights
         else:
             return examples
 
@@ -374,3 +440,119 @@ class Mimic_Mortality_Processor(DataProcessor):
         class_labels = text_file.read().split("\n")
 
         return class_labels
+
+
+
+
+class customPromptDataLoader(object):
+    r"""
+    PromptDataLoader wraps the orginal dataset. The input data is firstly wrapped with the
+    prompt's template, and then is tokenized by a wrapperd-tokenizer. 
+    
+    Args:
+        dataset (:obj:`Dataset` or :obj:`List`): Either a DatasetObject or a list containing the input examples.
+        template (:obj:`Template`): A derived class of of :obj:`Template`
+        tokenizer (:obj:`PretrainedTokenizer`): The pretrained tokenizer.
+        tokenizer_wrapper_class (:cls:`TokenizerWrapper`): The class of tokenizer wrapper.
+        max_seq_length (:obj:`str`, optional): The max sequence length of the input ids. It's used to trucate sentences.
+        batch_size (:obj:`int`, optional): The batch_size of data loader
+        teacher_forcing (:obj:`bool`, optional): Whether to fill the mask with target text. Set to true in training generation model.
+        decoder_max_length (:obj:`bool`, optional): the decoder maximum length of an encoder-decoder model.
+        predict_eos_token (:obj:`bool`, optional): Whether to predict the <eos> token. Suggest to set to true in generation.
+        truncate_method (:obj:`bool`, optional): the truncate method to use. select from `head`, `tail`, `balanced`.
+        kwargs  :Other kwargs that might be passed into a tokenizer wrapper. 
+    """
+    def __init__(self, 
+                    dataset: Union[Dataset, List],
+                    template: Template,
+                    tokenizer: PreTrainedTokenizer,
+                    tokenizer_wrapper_class: TokenizerWrapper,
+                    verbalizer: Optional[Verbalizer] = None,
+                    max_seq_length: Optional[str] = 512,
+                    batch_size: Optional[int] = 1,
+                    shuffle: Optional[bool] = False,
+                    teacher_forcing: Optional[bool] = False,
+                    decoder_max_length: Optional[int] = -1,
+                    predict_eos_token: Optional[bool] = False,
+                    truncate_method: Optional[str] = "tail",
+                    drop_last: Optional[bool] = False,
+                    sampler: Optional[str] = None,
+                    **kwargs,
+                ):
+
+        assert hasattr(dataset, "__iter__"), f"The dataset must have __iter__ method. dataset is {dataset}"
+        assert hasattr(dataset, "__len__"), f"The dataset must have __len__ method. dataset is {dataset}"
+        self.raw_dataset = dataset
+        
+        self.wrapped_dataset = []
+        self.tensor_dataset = []
+        self.template = template
+        self.verbalizer = verbalizer
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.teacher_forcing = teacher_forcing
+
+        tokenizer_wrapper_init_keys = signature(tokenizer_wrapper_class.__init__).args
+        prepare_kwargs = {
+            "max_seq_length" : max_seq_length,
+            "truncate_method" : truncate_method,
+            "decoder_max_length" : decoder_max_length,
+            "predict_eos_token" : predict_eos_token,
+            "tokenizer" : tokenizer,
+            **kwargs,
+        }
+        to_pass_kwargs = {key: prepare_kwargs[key] for key in prepare_kwargs if key in tokenizer_wrapper_init_keys}
+        
+
+        self.tokenizer_wrapper = tokenizer_wrapper_class(**to_pass_kwargs)
+        
+        # check the satisfiability of each component
+        assert hasattr(self.template, 'wrap_one_example'), "Your prompt has no function variable \
+                                                            named wrap_one_example"
+        
+        # processs
+        self.wrap()
+        self.tokenize()
+
+        if self.shuffle:
+            sampler = RandomSampler(self.tensor_dataset)
+        # else:
+        #     sampler = None
+
+        self.dataloader = DataLoader(
+            self.tensor_dataset, 
+            batch_size = self.batch_size,
+            sampler= sampler,
+            collate_fn = InputFeatures.collate_fct,
+            drop_last = drop_last,
+        )
+
+
+    def wrap(self):
+        r"""A simple interface to pass the examples to prompt, and wrap the text with template.
+        """
+        if isinstance(self.raw_dataset, Dataset) or isinstance(self.raw_dataset, List): 
+            assert len(self.raw_dataset) > 0, 'The dataset to be wrapped is empty.'
+            # for idx, example in tqdm(enumerate(self.raw_dataset),desc='Wrapping'):
+            for idx, example in enumerate(self.raw_dataset):
+                if self.verbalizer is not None and hasattr(self.verbalizer, 'wrap_one_example'): # some verbalizer may also process the example.
+                    example = self.verbalizer.wrap_one_example(example)
+                wrapped_example = self.template.wrap_one_example(example)
+                self.wrapped_dataset.append(wrapped_example)
+        else:
+            raise NotImplementedError
+
+    def tokenize(self) -> None:
+        r"""Pass the wraped text into a prompt-specialized tokenizer, 
+            the true PretrainedTokenizer inside the tokenizer is flexible, e.g. AlBert, Bert, T5,...
+        """
+        for idx, wrapped_example in tqdm(enumerate(self.wrapped_dataset),desc='tokenizing'):
+        # for idx, wrapped_example in enumerate(self.wrapped_dataset):
+            inputfeatures = InputFeatures(**self.tokenizer_wrapper.tokenize_one_example(wrapped_example, self.teacher_forcing), **wrapped_example[1]).to_tensor()
+            self.tensor_dataset.append(inputfeatures)
+        
+    def __len__(self):
+        return  len(self.dataloader)
+
+    def __iter__(self,):
+        return self.dataloader.__iter__()
