@@ -70,14 +70,14 @@ parser.add_argument("--scripts_path", type=str, default="./scripts/")
 parser.add_argument("--class_labels_file", type=str, default="./scripts/mimic_icd9_top50/labels.txt")
 parser.add_argument("--max_steps", default=15000, type=int)
 parser.add_argument("--prompt_lr", type=float, default=0.3)
-parser.add_argument("--warmup_step_prompt", type=int, default=100)
+parser.add_argument("--warmup_step_prompt", type=int, default=1000)
 parser.add_argument("--num_epochs", type=int, default=5)
 parser.add_argument("--batch_size", type=int, default=4)
 parser.add_argument("--init_from_vocab", action="store_true")
 parser.add_argument("--eval_every_steps", type=int, default=100)
 parser.add_argument("--soft_token_num", type=int, default=20)
 parser.add_argument("--optimizer", type=str, default="adafactor")
-parser.add_argument("--gradient_accum_steps", type = int, default = 2)
+parser.add_argument("--gradient_accum_steps", type = int, default = 5)
 parser.add_argument("--dev_run",action="store_true")
 parser.add_argument("--gpu_num", type=int, default = 0)
 
@@ -222,15 +222,18 @@ elif args.dataset == "mortality":
     # update data_dir
     data_dir = "../clinical-outcomes-data/mimic3-clinical-outcomes/mp/"
 
+    # we dont want to do anything with ce loss anymore
+    ce_class_weights = False    
+
     # get different splits - we want to return class weights for training set!
     dataset['train'], task_class_weights = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=False, sampler_weights= True)
 
     if args.dev_run:
         logger.warning("PEFORMING DEV RUN - LOGS WILL BE SAVED BUT NO CHECKPOINT! WILL ALSO USE A SUBSET OF DATA!")
-        dataset['train'] = dataset['train'][:500]
-        task_class_weights = task_class_weights[:500]
-        dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)[:100]
-        dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)[:100]
+        dataset['train'] = dataset['train'][:1000]
+        task_class_weights = task_class_weights[:1000]
+        dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)[:300]
+        dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)[:300]
     else:
         dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)
         dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)
@@ -339,7 +342,7 @@ from transformers import  AdamW, get_linear_schedule_with_warmup,get_constant_sc
 from transformers.optimization import Adafactor, AdafactorSchedule  # use Adafactor is the default setting for T5
 
 #TODO update this to handle class weights for imabalanced datasets
-if "task_class_weights" in locals():
+if ce_class_weights:
     logger.warning("we have some task specific class weights - passing to CE loss")
     # get from the class_weight function
     # task_class_weights = torch.tensor(task_class_weights, dtype=torch.float).to(cuda_device)
@@ -350,6 +353,7 @@ if "task_class_weights" in locals():
 else:
     loss_func = torch.nn.CrossEntropyLoss()
 
+# get total steps as a function of the max epochs, batch_size and len of dataloader
 tot_step = args.max_steps
 
 if args.tune_plm:
@@ -360,10 +364,10 @@ if args.tune_plm:
         {'params': [p for n, p in prompt_model.plm.named_parameters() if (not any(nd in n for nd in no_decay))], 'weight_decay': 0.01},
         {'params': [p for n, p in prompt_model.plm.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-    optimizer_plm = AdamW(optimizer_grouped_parameters_plm, lr=3e-5)
+    optimizer_plm = AdamW(optimizer_grouped_parameters_plm, lr=1e-05)
     scheduler_plm = get_linear_schedule_with_warmup(
         optimizer_plm, 
-        num_warmup_steps=100, num_training_steps=tot_step)
+        num_warmup_steps=5000, num_training_steps=tot_step)
 else:
     logger.warning("We will not be tunning the plm - i.e. the PLM layers are frozen during training")
     optimizer_plm = None
@@ -424,6 +428,8 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
     best_val_prec = 0    
     best_val_recall = 0
 
+ 
+
     # this will be set to true when max steps are reached
     leave_training = False
 
@@ -432,7 +438,17 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         tot_loss = 0 
         epoch_loss = 0
 
+        # for counting number of each class found in each batch accross entire epoch
+        tot_alive = 0
+        tot_dead = 0
         for step, inputs in enumerate(train_dataloader):
+
+            # lets add up number of each class
+            count = Counter(inputs.label.numpy())
+            # add num alive i.e. the 0 class and num dead i.e the 1st clas
+            tot_alive += count[0]
+            tot_dead += count[1]           
+
             if use_cuda:
                 inputs = inputs.to(cuda_device)
             logits = prompt_model(inputs)
@@ -446,7 +462,6 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
 
             # clip gradients based on gradient accumulation steps
             if actual_step % gradient_accumulation_steps == 0:
-
                 # log loss
                 aveloss = tot_loss/(step+1)
                 # write to tensorboard
@@ -482,7 +497,6 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
                     leave_training = True
                     break
 
-        
         # get epoch loss and write to tensorboard
 
         epoch_loss = tot_loss/len(train_dataloader)
@@ -490,15 +504,17 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
 
         # run a run through validation set to get some metrics        
-        val_acc, val_prec, val_recall, val_f1, val_auc, cm_figure = evaluate(prompt_model, validation_dataloader)
+        val_loss, val_acc, val_prec, val_recall, val_f1, val_auc_macro, val_auc_micro, cm_figure = evaluate(prompt_model, validation_dataloader)
 
+        writer.add_scalar("valid/loss", val_loss, epoch)
         writer.add_scalar("valid/balanced_accuracy", val_acc, epoch)
         writer.add_scalar("valid/precision", val_prec, epoch)
         writer.add_scalar("valid/recall", val_recall, epoch)
         writer.add_scalar("valid/f1", val_f1, epoch)
 
         #TODO add binary classification metrics e.g. roc/auc
-        writer.add_scalar("valid/auc", val_auc, epoch)
+        writer.add_scalar("valid/auc_macro", val_auc_macro, epoch)
+        writer.add_scalar("valid/auc_micro", val_auc_micro, epoch)
 
         # add cm to tensorboard
         writer.add_figure("valid/Confusion_Matrix", cm_figure, epoch)
@@ -527,6 +543,7 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
 def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class_labels):
     prompt_model.eval()
 
+    tot_loss = 0
     allpreds = []
     alllabels = []
     with torch.no_grad():
@@ -535,26 +552,27 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
                 inputs = inputs.to(cuda_device)
             logits = prompt_model(inputs)
             labels = inputs['label']
+
+            loss = loss_func(logits, labels)
+            tot_loss += loss.item()
+
             alllabels.extend(labels.cpu().tolist())
             allpreds.extend(torch.argmax(logits, dim=-1).cpu().tolist())
 
-    # acc = sum([int(i==j) for i,j in zip(allpreds, alllabels)])/len(allpreds)
-    # print(f"accuracy using manual method: {acc}")
-
-    # below is torch metrics but needs to still be tensors
-    # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-    # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
-    # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-    # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-    
+    val_loss = tot_loss/len(dataloader)    
     # get sklearn based metrics
     acc = balanced_accuracy_score(alllabels, allpreds)
     f1 = f1_score(alllabels, allpreds, average = 'weighted')
     prec = precision_score(alllabels, allpreds, average = 'weighted')
     recall = recall_score(alllabels, allpreds, average = 'weighted')
 
-    #  roc_auc  - only really good for binaryy classification but can try for multiclass too   
-    roc_auc = roc_auc_score(alllabels, allpreds, multi_class = "ovr")   
+    #  roc_auc  - only really good for binaryy classification but can try for multiclass too
+    if len(class_labels) > 2:   
+        roc_auc_macro = roc_auc_score(alllabels, allpreds, average = "macro", multi_class = "ovr") 
+        roc_auc_micro = roc_auc_score(alllabels, allpreds, average = "micro", multi_class = "ovr")
+    else:
+        roc_auc_macro = roc_auc_score(alllabels, allpreds, average = "macro") 
+        roc_auc_micro = roc_auc_score(alllabels, allpreds, average = "micro")
 
     # get confusion matrix
     cm = confusion_matrix(alllabels, allpreds)
@@ -565,23 +583,8 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
     cm_figure = plot_confusion_matrix(cm, class_labels)
 
     
-    return acc, prec, recall, f1, roc_auc, cm_figure
+    return val_loss, acc, prec, recall, f1, roc_auc_macro, roc_auc_micro, cm_figure
 
-
-# def plotConfusionMatrix(cm, classes, annot = True):
-
-#     '''
-#     Function to plot and save a confusion matrix
-#     '''
-#     cf_matrix = cm
-#     df_cm = pd.DataFrame(cf_matrix/np.sum(cf_matrix) * 10, index=[i for i in classes],
-#                          columns=[i for i in classes])
-#     plt.figure(figsize=(16, 10))
-#     plt.tight_layout()
-#     plt.ylabel('True label')
-#     plt.xlabel('Predicted label')
-    
-#     return sn.heatmap(df_cm, annot=annot, cmap = "Blues").get_figure()
 
 # nicer plot
 def plot_confusion_matrix(cm, class_names):
@@ -631,12 +634,14 @@ def plot_confusion_matrix(cm, class_names):
 # if refactor this has to be run before any training has occured
 if args.zero_shot:
     logger.info("Obtaining zero shot performance on test set!")
-    zero_acc, zero_prec, zero_recall, zero_f1, zero_auc, zero_cm_figure = evaluate(prompt_model, test_dataloader, mode = "test")
+    test_loss, zero_acc, zero_prec, zero_recall, zero_f1, zero_auc_macro, zero_auc_micro,zero_cm_figure = evaluate(prompt_model, test_dataloader, mode = "test")
+
     writer.add_scalar("zero_shot/accuracy", zero_acc, 0)
     writer.add_scalar("zero_shot/precision", zero_prec, 0)
     writer.add_scalar("zero_shot/recall", zero_recall, 0)
     writer.add_scalar("zero_shot/f1", zero_f1, 0)
-    writer.add_scalar("zero_shot/auc", zero_auc, 0)
+    writer.add_scalar("zero_shot/auc_macro", zero_auc_macro, 0)
+    writer.add_scalar("zero_shot/auc_micro", zero_auc_micro, 0)
     # add cm to tensorboard
     writer.add_figure("zero/Confusion_Matrix", zero_cm_figure, 0)
 
