@@ -20,7 +20,8 @@ from utils import Mimic_ICD9_Processor, Mimic_ICD9_Triage_Processor, Mimic_Morta
 import time
 import os
 from datetime import datetime
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
+from utils import SummaryWriter # this version is better for logging hparams with metrics..
 
 import torchmetrics.functional.classification as metrics
 from sklearn.metrics import balanced_accuracy_score, f1_score, precision_score, recall_score, classification_report, confusion_matrix, roc_auc_score 
@@ -141,8 +142,8 @@ with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
 writer = SummaryWriter(logs_dir)
 # add the hparams - NOT WORKING PROPERLY YET
 # print(f"hparams dict: {args.__dict__}")
-# save_metrics = {"train/loss": 0,"valid/loss":0}
-# writer.add_hparams(args.__dict__, save_metrics)
+save_metrics = {"random/metric": 0}
+writer.add_hparams(args.__dict__, save_metrics)
 
 
 dataset = {}
