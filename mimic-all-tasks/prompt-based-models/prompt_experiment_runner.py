@@ -1,3 +1,4 @@
+from typing import Dict
 from tqdm import tqdm
 from openprompt.data_utils import PROCESSORS
 import torch
@@ -55,6 +56,7 @@ parser.add_argument("--seed", type=int, default=144)
 parser.add_argument("--plm_eval_mode", action="store_true", help="whether to turn off the dropout in the freezed model. Set to true to turn off.")
 parser.add_argument("--tune_plm", action="store_true")
 parser.add_argument("--zero_shot", action="store_true")
+parser.add_argument("--few_shot_n", type=int, default = 100)
 parser.add_argument("--no_training", action="store_true")
 parser.add_argument("--model", type=str, default='t5', help="The plm to use e.g. t5-base, roberta-large, bert-base, emilyalsentzer/Bio_ClinicalBERT")
 parser.add_argument("--model_name_or_path", default='t5-base')
@@ -83,7 +85,8 @@ parser.add_argument("--gpu_num", type=int, default = 0)
 parser.add_argument("--balance_data", action="store_true")
 parser.add_argument("--ce_class_weights", action="store_true")
 parser.add_argument("--sampler_weights", action="store_true")
-parser.add_argument("--training_size", type=str, default="full")
+parser.add_argument("--training_size", type=str, default="full") # or fewshot or zero
+
 
 
 
@@ -136,6 +139,11 @@ with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
+# add the hparams - NOT WORKING PROPERLY YET
+# print(f"hparams dict: {args.__dict__}")
+# save_metrics = {"train/loss": 0,"valid/loss":0}
+# writer.add_hparams(args.__dict__, save_metrics)
+
 
 dataset = {}
 
@@ -316,6 +324,19 @@ if use_cuda:
 if model_parallelize:
     prompt_model.parallelize()
 
+
+# if doing few shot learning - produce the datasets here:
+if args.training_size == "fewshot":
+    logger.warning(f"Will be performing few shot learning.")
+# create the few_shot sampler for when we want to run training and testing with few shot learning
+    support_sampler = FewShotSampler(num_examples_per_label = args.few_shot_n, also_sample_dev=False)
+
+    # create a fewshot dataset from training, val and test. Seems to be what several papers do...
+    dataset['train'] = support_sampler(dataset['train'], seed=args.seed)
+    dataset['validation'] = support_sampler(dataset['validation'], seed=args.seed)
+    dataset['test'] = support_sampler(dataset['test'], seed=args.seed)
+
+# are we doing training?
 do_training = (not args.no_training)
 if do_training:
     # if we have a sampler .e.g weightedrandomsampler. Do not shuffle
@@ -334,6 +355,7 @@ if do_training:
         tokenizer_wrapper_class=WrapperClass, max_seq_length=max_seq_l, decoder_max_length=3, 
         batch_size=batchsize_e,shuffle=False, teacher_forcing=False, predict_eos_token=False,
         truncate_method="tail")
+
 
 # zero-shot test
 test_dataloader = customPromptDataLoader(dataset=dataset["test"], template=mytemplate, tokenizer=tokenizer, 
@@ -679,8 +701,6 @@ if do_training:
 elif not do_training:
     logger.warning("No training will be performed!")
 # write the contents to file
-
-print(content_write)
 
 writer.flush()
 
