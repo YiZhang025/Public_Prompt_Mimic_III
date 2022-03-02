@@ -24,7 +24,11 @@ from sklearn.metrics import classification_report, multilabel_confusion_matrix
 from bert_classifier import MimicBertModel, MimicDataset, MimicDataModule
 import argparse
 from datetime import datetime
+import warnings
 
+warnings.filterwarnings(
+    "ignore", ".*Trying to infer the `batch_size` from an ambiguous collection.*"
+)
 
 '''
 Script to run training with a argument specified BERT model as the pre-trained encoder for instance classification.
@@ -259,8 +263,8 @@ def main():
 
     if args.nr_frozen_epochs > 0:
         logger.warning(f"Freezing the encoder/plm for {args.nr_frozen_epochs} epochs")
-        ckpt_dir = f"../ckpts/{args.dataset}/frozen_plm/{args.encoder_model}/version_{time_now}"
-        log_dir = f"../logs/{args.dataset}/frozen_plm/"
+        ckpt_dir = f"./ckpts/{args.dataset}/frozen_plm/{args.encoder_model}/version_{time_now}"
+        log_dir = f"./logs/{args.dataset}/frozen_plm/"
 
     # load tokenizer
     print(f"loading tokenizer : {pretrained_model_name}")
@@ -293,7 +297,8 @@ def main():
 
     steps_per_epoch = len(train_df) // batch_size
     total_training_steps = steps_per_epoch * n_epochs
-    warmup_steps = total_training_steps // 5
+    # warmup_steps = total_training_steps // 5
+    warmup_steps = 5000
     warmup_steps, total_training_steps
 
     # get some class specific loss weights - only needed if doing some form of weighted cross entropy with ubalanced classes

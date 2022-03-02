@@ -240,7 +240,7 @@ class MimicBertModel(pl.LightningModule):
             self._do_reinit()
         #if we want to bias loss based on class sample sizes
         if weight_classes:
-            logger.warning(f"will be supplying class weights to the loss function")
+            logger.warning(f"will be supplying class weights to the loss function: {ce_class_weights}")
             self.criterion = nn.CrossEntropyLoss(weight=ce_class_weights)
         else:
             self.criterion = nn.CrossEntropyLoss()
@@ -334,7 +334,7 @@ class MimicBertModel(pl.LightningModule):
         return loss 
 
     def validation_epoch_end(self, outputs):
-
+        logger.warning("on validation epoch end")
         labels = []
         predictions = []
         for output in outputs:
@@ -350,7 +350,8 @@ class MimicBertModel(pl.LightningModule):
         # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
         # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
 
-
+        print(f"labels: {labels}")
+        print(f"predictions: {predictions}")
         # get class labels
         class_labels = self.class_labels
 
@@ -376,6 +377,8 @@ class MimicBertModel(pl.LightningModule):
         
         # log this for monitoring
         self.log('monitor_balanced_accuracy', acc)
+
+        logger.warning(f"current epoch : {self.current_epoch}")
 
         # log to tensorboard
         self.logger.experiment.add_figure("valid/confusion_matrix", cm_figure, self.current_epoch)

@@ -80,31 +80,17 @@ parser.add_argument("--optimizer", type=str, default="adafactor")
 parser.add_argument("--gradient_accum_steps", type = int, default = 5)
 parser.add_argument("--dev_run",action="store_true")
 parser.add_argument("--gpu_num", type=int, default = 0)
+parser.add_argument("--balance_data", action="store_true")
+parser.add_argument("--ce_class_weights", action="store_true")
+parser.add_argument("--sampler_weights", action="store_true")
+parser.add_argument("--training_size", type=str, default="full")
+
 
 
 # instatiate args and set to variable
 args = parser.parse_args()
 
-
-# write arguments to a txt file to go with the model checkpoint and logs
-content_write = "="*20+"\n"
-content_write += f"dataset {args.dataset}\t"
-content_write += f"tune_plm {args.tune_plm}\t"
-content_write += f"temp {args.template_id}\t"
-content_write += f"verb {args.verbalizer_id}\t"
-content_write += f"model {args.model}\t"
-content_write += f"seed {args.seed}\t"
-content_write += f"shot {args.shot}\t"
-content_write += f"plm_eval_mode {args.plm_eval_mode}\t"
-content_write += f"init_from_vocab {args.init_from_vocab}\t"
-content_write += f"eval_every_steps {args.eval_every_steps}\t"
-content_write += f"prompt_lr {args.prompt_lr}\t"
-content_write += f"optimizer {args.optimizer}\t"
-content_write += f"warmup_step_prompt {args.warmup_step_prompt}\t"
-content_write += f"soft_token_num {args.soft_token_num}\t"
-content_write += "\n"
-
-logger.info(content_write)
+logger.info(f" arguments provided were: {args}")
 
 import random
 
@@ -125,28 +111,28 @@ version = f"version_{time_now}"
 plm, tokenizer, model_config, WrapperClass = load_plm(args.model, args.model_name_or_path)
 
 # edit based on whether or not plm was frozen during training
+# actually want to save the checkpoints and logs in same place now. Becomes a lot easier to manage later
 if args.tune_plm == True:
     logger.warning("Unfreezing the plm - will be updated during training")
     freeze_plm = False
-    # set checkpoint, logs and params save_dirs
-    ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    # set checkpoint, logs and params save_dirs    
     logs_dir = f"{args.project_root}/logs/{args.dataset}/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    ckpt_dir = f"{logs_dir}/checkpoints/"
 else:
     logger.warning("Freezing the plm")
     freeze_plm = True
-    # set checkpoint, logs and params save_dirs
-    ckpt_dir = f"{args.project_root}/checkpoints/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    # set checkpoint, logs and params save_dirs    
     logs_dir = f"{args.project_root}/logs/{args.dataset}/frozen_plm/{args.model_name_or_path}_temp{args.template_type}{args.template_id}_verb{args.verbalizer_type}{args.verbalizer_id}/{version}"
+    ckpt_dir = f"{logs_dir}/checkpoints/"
 
-# check if the checkpoint and params dir exists  
+# check if the checkpoint and params dir exists   
 
-if not args.dev_run:
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(ckpt_dir)
+if not os.path.exists(ckpt_dir):
+    os.makedirs(ckpt_dir)
 
-    # lets write these arguments to file for later loading alongside the trained models
-    with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
-        json.dump(args.__dict__, f, indent=2)
+# lets write these arguments to file for later loading alongside the trained models
+with open(f'{ckpt_dir}/hparams.txt', 'w') as f:
+    json.dump(args.__dict__, f, indent=2)
 
 # set up tensorboard logger
 writer = SummaryWriter(logs_dir)
@@ -186,6 +172,7 @@ if args.dataset == "icd9_50":
         gradient_accumulation_steps = args.gradient_accum_steps
         model_parallelize = False
 
+
 elif args.dataset == "icd9_triage":
     logger.warning(f"Using the following dataset: {args.dataset} ")
     Processor = Mimic_ICD9_Triage_Processor
@@ -223,15 +210,32 @@ elif args.dataset == "mortality":
     data_dir = "../clinical-outcomes-data/mimic3-clinical-outcomes/mp/"
 
     # we dont want to do anything with ce loss anymore
-    ce_class_weights = False    
+    #TODO - add tese to args parse
+    ce_class_weights = args.ce_class_weights
+    sampler_weights = args.sampler_weights    
+    balance_data = args.balance_data
 
+    # cant set both these to true
+    logger.warning(f"ce_class weights : {ce_class_weights} and sampler weights: {sampler_weights}")
+    assert ce_class_weights != True and sampler_weights != True, "can't have both ce class weights and sampler class weights set to True"
+
+    # set balance_data to true and only return the samples
+    if balance_data:
+        logger.warning(f"Will be balancing the dataset! i.e Downsampling!")
+        dataset['train'] = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = balance_data, class_weights=False, sampler_weights= False)
+    # if getting these weights need to return both the samples and weights
+    elif ce_class_weights or sampler_weights:
+        logger.warning(f"Will getting class weights!")
     # get different splits - we want to return class weights for training set!
-    dataset['train'], task_class_weights = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=False, sampler_weights= True)
+        dataset['train'], task_class_weights = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=ce_class_weights, sampler_weights= sampler_weights)
 
+    else:
+        dataset['train'] = Processor().get_examples(data_dir = data_dir, mode = "train", balance_data = False, class_weights=False, sampler_weights= False)
+
+    # if we wanna run through a small sample
     if args.dev_run:
         logger.warning("PEFORMING DEV RUN - LOGS WILL BE SAVED BUT NO CHECKPOINT! WILL ALSO USE A SUBSET OF DATA!")
         dataset['train'] = dataset['train'][:1000]
-        task_class_weights = task_class_weights[:1000]
         dataset['validation'] = Processor().get_examples(data_dir = data_dir, mode = "valid", balance_data = False, class_weights=False, sampler_weights= False)[:300]
         dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)[:300]
     else:
@@ -239,7 +243,8 @@ elif args.dataset == "mortality":
         dataset['test'] = Processor().get_examples(data_dir = data_dir, mode = "test", balance_data = False, class_weights=False, sampler_weights= False)
 
     # now set sampler based on these weights  - this will mean during batch loading the dataloader samples based on these weights
-    sampler = WeightedRandomSampler(task_class_weights, len(task_class_weights), replacement = True)
+    if sampler_weights:
+        sampler = WeightedRandomSampler(task_class_weights, len(task_class_weights), replacement = True)
     # the below class labels should align with the label encoder fitted to training data
     # you will need to generate this class label text file first using the mimic processor with generate_class_labels flag to set true
     # e.g. Processor().get_examples(data_dir = args.data_dir, mode = "train", generate_class_labels = True)[:10000]
@@ -503,18 +508,23 @@ def train(prompt_model, train_dataloader, num_epochs, mode = "train", ckpt_dir =
         print("Epoch {}, loss: {}".format(epoch, epoch_loss), flush=True)   
         writer.add_scalar("train/epoch_loss", epoch_loss, epoch)
 
+        
         # run a run through validation set to get some metrics        
-        val_loss, val_acc, val_prec, val_recall, val_f1, val_auc_macro, val_auc_micro, cm_figure = evaluate(prompt_model, validation_dataloader)
+        val_loss, val_acc, val_prec_weighted, val_prec_macro, val_recall_weighted,val_recall_macro, val_f1_weighted,val_f1_macro, val_auc_weighted,val_auc_macro, cm_figure = evaluate(prompt_model, validation_dataloader)
 
         writer.add_scalar("valid/loss", val_loss, epoch)
         writer.add_scalar("valid/balanced_accuracy", val_acc, epoch)
-        writer.add_scalar("valid/precision", val_prec, epoch)
-        writer.add_scalar("valid/recall", val_recall, epoch)
-        writer.add_scalar("valid/f1", val_f1, epoch)
+        writer.add_scalar("valid/precision_weighted", val_prec_weighted, epoch)
+        writer.add_scalar("valid/precision_macro", val_prec_macro, epoch)
+        writer.add_scalar("valid/recall_weighted", val_recall_weighted, epoch)
+        writer.add_scalar("valid/recall_macro", val_recall_macro, epoch)
+        writer.add_scalar("valid/f1_weighted", val_f1_weighted, epoch)
+        writer.add_scalar("valid/f1_macro", val_f1_macro, epoch)
 
         #TODO add binary classification metrics e.g. roc/auc
+        writer.add_scalar("valid/auc_weighted", val_auc_weighted, epoch)
         writer.add_scalar("valid/auc_macro", val_auc_macro, epoch)
-        writer.add_scalar("valid/auc_micro", val_auc_micro, epoch)
+        
 
         # add cm to tensorboard
         writer.add_figure("valid/Confusion_Matrix", cm_figure, epoch)
@@ -562,17 +572,21 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
     val_loss = tot_loss/len(dataloader)    
     # get sklearn based metrics
     acc = balanced_accuracy_score(alllabels, allpreds)
-    f1 = f1_score(alllabels, allpreds, average = 'weighted')
-    prec = precision_score(alllabels, allpreds, average = 'weighted')
-    recall = recall_score(alllabels, allpreds, average = 'weighted')
+    f1_weighted = f1_score(alllabels, allpreds, average = 'weighted')
+    f1_macro = f1_score(alllabels, allpreds, average = 'macro')
+    prec_weighted = precision_score(alllabels, allpreds, average = 'weighted')
+    prec_macro = precision_score(alllabels, allpreds, average = 'macro')
+    recall_weighted = recall_score(alllabels, allpreds, average = 'weighted')
+    recall_macro = recall_score(alllabels, allpreds, average = 'macro')
 
     #  roc_auc  - only really good for binaryy classification but can try for multiclass too
     if len(class_labels) > 2:   
-        roc_auc_macro = roc_auc_score(alllabels, allpreds, average = "macro", multi_class = "ovr") 
-        roc_auc_micro = roc_auc_score(alllabels, allpreds, average = "micro", multi_class = "ovr")
+        roc_auc_weighted = roc_auc_score(alllabels, allpreds, average = "weighted", multi_class = "ovr")
+        roc_auc_macro = roc_auc_score(alllabels, allpreds, average = "macro", multi_class = "ovr")         
     else:
+        roc_auc_weighted = roc_auc_score(alllabels, allpreds, average = "weighted")
         roc_auc_macro = roc_auc_score(alllabels, allpreds, average = "macro") 
-        roc_auc_micro = roc_auc_score(alllabels, allpreds, average = "micro")
+        
 
     # get confusion matrix
     cm = confusion_matrix(alllabels, allpreds)
@@ -583,7 +597,7 @@ def evaluate(prompt_model, dataloader, mode = "validation", class_labels = class
     cm_figure = plot_confusion_matrix(cm, class_labels)
 
     
-    return val_loss, acc, prec, recall, f1, roc_auc_macro, roc_auc_micro, cm_figure
+    return val_loss, acc, prec_weighted, prec_macro, recall_weighted, recall_macro, f1_weighted, f1_macro, roc_auc_weighted, roc_auc_macro, cm_figure
 
 
 # nicer plot
@@ -634,16 +648,26 @@ def plot_confusion_matrix(cm, class_names):
 # if refactor this has to be run before any training has occured
 if args.zero_shot:
     logger.info("Obtaining zero shot performance on test set!")
-    test_loss, zero_acc, zero_prec, zero_recall, zero_f1, zero_auc_macro, zero_auc_micro,zero_cm_figure = evaluate(prompt_model, test_dataloader, mode = "test")
+    
+    zero_loss, zero_acc, zero_prec_weighted, zero_prec_macro, zero_recall_weighted,zero_recall_macro, zero_f1_weighted,zero_f1_macro, zero_auc_weighted,zero_auc_macro, zero_cm_figure = evaluate(prompt_model, test_dataloader, mode = "test")
 
-    writer.add_scalar("zero_shot/accuracy", zero_acc, 0)
-    writer.add_scalar("zero_shot/precision", zero_prec, 0)
-    writer.add_scalar("zero_shot/recall", zero_recall, 0)
-    writer.add_scalar("zero_shot/f1", zero_f1, 0)
+
+    writer.add_scalar("zero_shot/loss", zero_loss, 0)
+    writer.add_scalar("zero_shot/balanced_accuracy", zero_acc, 0)
+    writer.add_scalar("zero_shot/precision_weighted", zero_prec_weighted, 0)
+    writer.add_scalar("zero_shot/precision_macro", zero_prec_macro, 0)
+    writer.add_scalar("zero_shot/recall_weighted", zero_recall_weighted, 0)
+    writer.add_scalar("zero_shot/recall_macro", zero_recall_macro, 0)
+    writer.add_scalar("zero_shot/f1_weighted", zero_f1_weighted, 0)
+    writer.add_scalar("zero_shot/f1_macro", zero_f1_macro, 0)
+
+    #TODO add binary classification metrics e.g. roc/auc
+    writer.add_scalar("zero_shot/auc_weighted", zero_auc_weighted, 0)
     writer.add_scalar("zero_shot/auc_macro", zero_auc_macro, 0)
-    writer.add_scalar("zero_shot/auc_micro", zero_auc_micro, 0)
+    
+
     # add cm to tensorboard
-    writer.add_figure("zero/Confusion_Matrix", zero_cm_figure, 0)
+    writer.add_figure("zero_shot/Confusion_Matrix", zero_cm_figure, 0)
 
 # run training
 
