@@ -94,7 +94,7 @@ def main():
                         help = "The data path to the directory containing the notes and referral data files")
 
     parser.add_argument("--save_dir",
-                        default = "F:/OxfordTempProjects/PatientTriageNLP/experiments/binary_instance_classification/pytorch-lightning-models/",
+                        default = "/mnt/sdg/niallt/saved_models/mimic-tasks/pytorch-lightning-models/logs",
                         type=str,
                         help = "The data path to the directory containing the notes and referral data files"
                         )
@@ -257,14 +257,16 @@ def main():
     # update ckpt and logs dir based on the dataset
     
     ckpt_dir = f"./ckpts/{args.dataset}/{args.encoder_model}/version_{time_now}"
-    log_dir = f"./logs/{args.dataset}/"
+    # log_dir = f"./logs/{args.dataset}/"
+    log_dir = f"{args.save_dir}/{args.dataset}/"
 
     # update ckpt and logs dir based on whether plm (encoder) was frozen during training
 
     if args.nr_frozen_epochs > 0:
         logger.warning(f"Freezing the encoder/plm for {args.nr_frozen_epochs} epochs")
         ckpt_dir = f"./ckpts/{args.dataset}/frozen_plm/{args.encoder_model}/version_{time_now}"
-        log_dir = f"./logs/{args.dataset}/frozen_plm/"
+        # log_dir = f"./logs/{args.dataset}/frozen_plm/"
+        log_dir = f"{log_dir}/frozen_plm"
 
     # load tokenizer
     print(f"loading tokenizer : {pretrained_model_name}")

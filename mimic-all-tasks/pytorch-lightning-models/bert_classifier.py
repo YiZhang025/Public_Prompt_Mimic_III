@@ -345,10 +345,10 @@ class MimicBertModel(pl.LightningModule):
                 predictions.append(np.argmax(out_predictions, axis = -1))
 
         # below is torch metrics but needs to still be tensors
-        # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-        # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
-        # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-        # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+        # f1 = metrics.f1(predictions,labels, average = 'weighted', num_classes = len(class_labels))
+        # prec =metrics.precision(predictions,labels, average = 'weighted', num_classes =len(class_labels))
+        # recall = metrics.recall(predictions,labels, average = 'weighted', num_classes = len(class_labels))
+        # acc = metrics.accuracy(predictions,labels, average = 'weighted', num_classes = len(class_labels))
 
         print(f"labels: {labels}")
         print(f"predictions: {predictions}")
@@ -357,17 +357,20 @@ class MimicBertModel(pl.LightningModule):
 
         # get sklearn based metrics
         acc = balanced_accuracy_score(labels, predictions)
-        f1 = f1_score(labels, predictions, average = 'weighted')
-        prec = precision_score(labels, predictions, average = 'weighted')
-        recall = recall_score(labels, predictions, average = 'weighted') 
+        f1_weighted = f1_score(labels, predictions, average = 'weighted')
+        f1_macro = f1_score(labels, predictions, average = 'macro')
+        prec_weighted = precision_score(labels, predictions, average = 'weighted')
+        prec_macro = precision_score(labels, predictions, average = 'macro')
+        recall_weighted = recall_score(labels, predictions, average = 'weighted')
+        recall_macro = recall_score(labels, predictions, average = 'macro')
 
-            #  roc_auc  - only really good for binaryy classification but can try for multiclass too
+        #  roc_auc  - only really good for binaryy classification but can try for multiclass too
         if len(class_labels) > 2:   
-            roc_auc_macro = roc_auc_score(labels, predictions, average = "macro", multi_class = "ovr") 
-            roc_auc_micro = roc_auc_score(labels, predictions, average = "micro", multi_class = "ovr")
+            roc_auc_weighted = roc_auc_score(labels, predictions, average = "weighted", multi_class = "ovr")
+            roc_auc_macro = roc_auc_score(labels, predictions, average = "macro", multi_class = "ovr")         
         else:
+            roc_auc_weighted = roc_auc_score(labels, predictions, average = "weighted")
             roc_auc_macro = roc_auc_score(labels, predictions, average = "macro") 
-            roc_auc_micro = roc_auc_score(labels, predictions, average = "micro")   
  
         # get confusion matrix
         cm = confusion_matrix(labels,predictions)
@@ -383,11 +386,16 @@ class MimicBertModel(pl.LightningModule):
         # log to tensorboard
         self.logger.experiment.add_figure("valid/confusion_matrix", cm_figure, self.current_epoch)
         self.logger.experiment.add_scalar('valid/balanced_accuracy',acc, self.current_epoch)
-        self.logger.experiment.add_scalar('valid/prec',prec, self.current_epoch)
-        self.logger.experiment.add_scalar('valid/f1',f1, self.current_epoch)
-        self.logger.experiment.add_scalar('valid/recall',recall, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/prec_weighted',prec_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/prec_macro',prec_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/f1_weighted',f1_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/f1_macro',f1_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/recall_weighted',recall_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/recall_macro',recall_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('valid/roc_auc_weighted',roc_auc_weighted, self.current_epoch)
         self.logger.experiment.add_scalar('valid/roc_auc_macro',roc_auc_macro, self.current_epoch)
-        self.logger.experiment.add_scalar('valid/roc_auc_micro',roc_auc_micro, self.current_epoch)
+
+
 
     def test_epoch_end(self, outputs):
         labels = []
@@ -400,28 +408,31 @@ class MimicBertModel(pl.LightningModule):
                 predictions.append(np.argmax(out_predictions, axis = -1))
 
         # below is torch metrics but needs to still be tensors
-        # f1 = metrics.f1(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-        # prec =metrics.precision(allpreds,alllabels, average = 'weighted', num_classes =len(class_labels))
-        # recall = metrics.recall(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
-        # acc = metrics.accuracy(allpreds,alllabels, average = 'weighted', num_classes = len(class_labels))
+        # f1 = metrics.f1(predictions,labels, average = 'weighted', num_classes = len(class_labels))
+        # prec =metrics.precision(predictions,labels, average = 'weighted', num_classes =len(class_labels))
+        # recall = metrics.recall(predictions,labels, average = 'weighted', num_classes = len(class_labels))
+        # acc = metrics.accuracy(predictions,labels, average = 'weighted', num_classes = len(class_labels))
         
         # get sklearn based metrics
         acc = balanced_accuracy_score(labels, predictions)
-        f1 = f1_score(labels, predictions, average = 'weighted')
-        prec = precision_score(labels, predictions, average = 'weighted')
-        recall = recall_score(labels, predictions, average = 'weighted') 
+        f1_weighted = f1_score(labels, predictions, average = 'weighted')
+        f1_macro = f1_score(labels, predictions, average = 'macro')
+        prec_weighted = precision_score(labels, predictions, average = 'weighted')
+        prec_macro = precision_score(labels, predictions, average = 'macro')
+        recall_weighted = recall_score(labels, predictions, average = 'weighted')
+        recall_macro = recall_score(labels, predictions, average = 'macro')
+
 
         # get class labels
         class_labels = self.class_labels
-
-            #  roc_auc  - only really good for binaryy classification but can try for multiclass too
-        if self.num_labels > 2:   
-            roc_auc_macro = roc_auc_score(labels, predictions, average = "macro", multi_class = "ovr") 
-            roc_auc_micro = roc_auc_score(labels, predictions, average = "micro", multi_class = "ovr")
+        #  roc_auc  - only really good for binaryy classification but can try for multiclass too
+        if len(class_labels) > 2:   
+            roc_auc_weighted = roc_auc_score(labels, predictions, average = "weighted", multi_class = "ovr")
+            roc_auc_macro = roc_auc_score(labels, predictions, average = "macro", multi_class = "ovr")         
         else:
+            roc_auc_weighted = roc_auc_score(labels, predictions, average = "weighted")
             roc_auc_macro = roc_auc_score(labels, predictions, average = "macro") 
-            roc_auc_micro = roc_auc_score(labels, predictions, average = "micro")   
-
+ 
         # get confusion matrix
         cm = confusion_matrix(labels,predictions)
 
@@ -431,14 +442,19 @@ class MimicBertModel(pl.LightningModule):
         # log this for monitoring
         self.log('monitor_balanced_accuracy', acc)
 
+        logger.warning(f"current epoch : {self.current_epoch}")
+
         # log to tensorboard
         self.logger.experiment.add_figure("test/confusion_matrix", cm_figure, self.current_epoch)
         self.logger.experiment.add_scalar('test/balanced_accuracy',acc, self.current_epoch)
-        self.logger.experiment.add_scalar('test/prec',prec, self.current_epoch)
-        self.logger.experiment.add_scalar('test/f1',f1, self.current_epoch)
-        self.logger.experiment.add_scalar('test/recall',recall, self.current_epoch)
+        self.logger.experiment.add_scalar('test/prec_weighted',prec_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('test/prec_macro',prec_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('test/f1_weighted',f1_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('test/f1_macro',f1_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('test/recall_weighted',recall_weighted, self.current_epoch)
+        self.logger.experiment.add_scalar('test/recall_macro',recall_macro, self.current_epoch)
+        self.logger.experiment.add_scalar('test/roc_auc_weighted',roc_auc_weighted, self.current_epoch)
         self.logger.experiment.add_scalar('test/roc_auc_macro',roc_auc_macro, self.current_epoch)
-        self.logger.experiment.add_scalar('test/roc_auc_micro',roc_auc_micro, self.current_epoch)
 
 
     def configure_optimizers(self):
