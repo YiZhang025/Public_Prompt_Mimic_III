@@ -125,7 +125,7 @@ def main():
                         help = "batch size for training"
                         )
     parser.add_argument("--accumulate_grad_batches",
-                        default = 4,
+                        default = 20,
                         type=int,
                         help = "number of batches to accumlate before optimization step"
                         )
@@ -164,7 +164,7 @@ def main():
     )
     parser.add_argument(
         "--classifier_learning_rate",
-        default=3e-05,
+        default=1e-05,
         type=float,
         help="Classification head learning rate.",
     )
@@ -300,7 +300,7 @@ def main():
     steps_per_epoch = len(train_df) // batch_size
     total_training_steps = steps_per_epoch * n_epochs
     # warmup_steps = total_training_steps // 5
-    warmup_steps = 5000
+    warmup_steps = 100
     warmup_steps, total_training_steps
 
     # get some class specific loss weights - only needed if doing some form of weighted cross entropy with ubalanced classes
